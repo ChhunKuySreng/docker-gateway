@@ -17,7 +17,7 @@ flowchart TD
     User -->|"HTTPS :443"| TS_QA["Tailscale Funnel: local-qa"]
 
     subgraph "Nginx Web Gateway (local-app)"
-        TS_APP -->|":80"| MainNginx["global-nginx Gateway"]
+        TS_APP -->|":80"| MainNginx["gateway-nginx Gateway"]
         MainNginx -->|"/"| Dashboard["Live Sync Dashboard"]
         MainNginx -->|"/status.json"| StatusAPI["Live Status Metadata API"]
         MainNginx -->|"/project-one/*"| App1["Container: app-project-one"]
@@ -26,7 +26,7 @@ flowchart TD
     end
 
     subgraph "Apache Tomcat Stack (local-qa)"
-        TS_QA -->|":8080"| TomcatServer["global-tomcat :8080"]
+        TS_QA -->|":8080"| TomcatServer["gateway-tomcat :8080"]
         TomcatServer -->|"/app-one/*"| War1["webapps/app-one.war"]
         TomcatServer -->|"/app-two/*"| War2["webapps/app-two.war"]
         TomcatServer -->|"/manager/html"| Manager["Tomcat Web Manager"]
@@ -182,9 +182,9 @@ d-ps
 You should see:
 
 - `tailscale-app` (Tailscale Node for Web Gateway)
-- `global-nginx` (Nginx Gateway Router)
+- `gateway-nginx` (Nginx Gateway Router)
 - `tailscale-qa` (Tailscale Node for Tomcat QA)
-- `global-tomcat` (Apache Tomcat 9 Server)
+- `gateway-tomcat` (Apache Tomcat 9 Server)
 
 ---
 

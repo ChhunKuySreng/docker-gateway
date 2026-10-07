@@ -45,7 +45,7 @@ const isDockerRunning = () => {
       encoding: "utf8",
       stdio: ["pipe", "pipe", "ignore"],
     });
-    return ps.includes("global-nginx");
+    return ps.includes("gateway-nginx") || ps.includes("global-nginx");
   } catch (e) {
     return false;
   }
@@ -211,7 +211,7 @@ console.log(
 
 // Check if Docker is running
 if (!isDockerRunning()) {
-  console.log(`\nℹ️  Docker (global-nginx) is NOT running.`);
+  console.log(`\nℹ️  Docker (gateway-nginx) is NOT running.`);
   console.log(`📦 Build completed and kept in project directory:`);
   console.log(`   ${sourceDir || zipFallbackPath}`);
   console.log(`💡 Tip: Run 'd-up' to start Docker and auto-deploy.`);

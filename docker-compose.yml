@@ -23,7 +23,7 @@ services:
 
   nginx:
     image: nginx:alpine
-    container_name: global-nginx
+    container_name: gateway-nginx
     restart: unless-stopped
     network_mode: service:tailscale-app
     volumes:
@@ -58,8 +58,8 @@ services:
       dockerfile: Dockerfile.tomcat
       args:
         - TOMCAT_IMAGE=${TOMCAT_IMAGE:-tomcat:9.0.16-jre11}
-    image: global-tomcat-img
-    container_name: global-tomcat
+    image: gateway-tomcat-img
+    container_name: gateway-tomcat
     restart: unless-stopped
     network_mode: service:tailscale-qa
     environment:

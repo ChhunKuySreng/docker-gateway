@@ -88,7 +88,8 @@ function updateGlobalDashboard() {
     const appDomain = getTailscaleDomain("tailscale-app", "local-app");
     const qaDomain = getTailscaleDomain("tailscale-qa", "local-qa");
     const runningContainers = getRunningContainers();
-    const isTomcatRunning = runningContainers.has("global-tomcat");
+    const isTomcatRunning = runningContainers.has("gateway-tomcat") || runningContainers.has("global-tomcat");
+    const tomcatContainerName = runningContainers.has("gateway-tomcat") ? "gateway-tomcat" : "global-tomcat";
 
     // 1. Discover Web Frontend Projects
     const webProjects = [];
@@ -183,7 +184,7 @@ function updateGlobalDashboard() {
           type: "tomcat",
           url: `${qaDomain}/${appPath}`,
           fullUrl: `${qaDomain}/${appPath}`,
-          containerName: "global-tomcat",
+          containerName: tomcatContainerName,
           isRunning: isTomcatRunning,
           status: isTomcatRunning ? "online" : "offline",
           badge: isTomcatRunning ? badge : "Tomcat Offline",

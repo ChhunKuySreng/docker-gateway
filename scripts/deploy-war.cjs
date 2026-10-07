@@ -45,7 +45,7 @@ const isDockerRunning = () => {
       encoding: "utf8",
       stdio: ["pipe", "pipe", "ignore"],
     });
-    return ps.includes("global-tomcat");
+    return ps.includes("gateway-tomcat") || ps.includes("global-tomcat");
   } catch (e) {
     return false;
   }
@@ -157,7 +157,7 @@ console.log(`\n✅ WAR artifact ready: ${warFilePath}`);
 
 // Check if Docker is running
 if (!isDockerRunning()) {
-  console.log(`\nℹ️  Docker (global-tomcat) is NOT running.`);
+  console.log(`\nℹ️  Docker (gateway-tomcat) is NOT running.`);
   console.log(`📦 Build completed and kept in project release folder:`);
   console.log(`   ${warFilePath}`);
   console.log(`💡 Tip: Run 'd-up' to start Docker and auto-deploy.`);
