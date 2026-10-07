@@ -61,7 +61,7 @@ const getDockerNetwork = () => {
     const keys = Object.keys(parsed);
     if (keys.length > 0) return keys[0];
   } catch (e) {}
-  return "docker-global_default";
+  return `${path.basename(globalDir)}_default`;
 };
 
 const extractZip = (srcZip, destDir) => {

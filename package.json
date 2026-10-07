@@ -1,8 +1,8 @@
 {
-  "name": "docker-global",
+  "name": "docker-gateway",
   "version": "1.0.0",
   "private": true,
-  "description": "Global Tailscale + Nginx + Tomcat Stack",
+  "description": "Tailscale + Nginx + Apache Tomcat Gateway Stack",
   "scripts": {
     "setup": "node scripts/setup.cjs",
     "up": "docker compose up -d",

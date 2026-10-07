@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# 🚀 Global Docker Stack Setup Script for macOS / Linux
+# 🚀 Docker Gateway Stack Setup Script for macOS / Linux
 # ==============================================================================
 set -e
 
@@ -16,7 +16,7 @@ BOLD='\033[1m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo -e "\n${BOLD}${BLUE}======================================================${NC}"
-echo -e "${BOLD}${BLUE}   🚀 Setting up Global Docker Stack (macOS / Linux)  ${NC}"
+echo -e "${BOLD}${BLUE}   🚀 Setting up Docker Gateway Stack (macOS / Linux) ${NC}"
 echo -e "${BOLD}${BLUE}======================================================${NC}\n"
 
 # 1. Check Prerequisites

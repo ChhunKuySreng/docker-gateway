@@ -1,5 +1,5 @@
 # ==============================================================================
-# Global Docker Stack Setup Script for Windows (PowerShell)
+# Docker Gateway Stack Setup Script for Windows (PowerShell)
 # ==============================================================================
 [CmdletBinding()]
 param()
@@ -9,7 +9,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Host ""
 Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host "   Setting up Global Docker Stack (Windows)           " -ForegroundColor Cyan
+Write-Host "   Setting up Docker Gateway Stack (Windows)          " -ForegroundColor Cyan
 Write-Host "======================================================" -ForegroundColor Cyan
 Write-Host ""
 

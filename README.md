@@ -1,6 +1,6 @@
-# 🚀 Global Multi-Project Docker Stack (Tailscale + Nginx + Apache Tomcat)
+# 🚀 Multi-Project Docker Gateway (Tailscale + Nginx + Apache Tomcat)
 
-A unified, centralized Docker development and deployment environment featuring:
+A unified, centralized Docker development and deployment gateway environment featuring:
 
 - **Dual Tailscale HTTPS Funnels**: Public HTTPS domains for both Web Apps and Java WARs.
 - **Dynamic Multi-Container Web Gateway (Nginx)**: Automatically spins up dedicated, isolated containers for each web project (`1 Project = 1 Container = 1 Context Path`).
@@ -105,7 +105,7 @@ Once the prerequisites above are completed, run the setup script for your platfo
 Open your terminal and run:
 
 ```bash
-cd ~/Sites/docker-global
+cd ~/Sites/docker-gateway
 ./setup.sh
 # or: npm run setup
 ```
@@ -123,7 +123,7 @@ source ~/.zshrc    # or: source ~/.bashrc
 Open PowerShell as Administrator (or standard user) and run:
 
 ```powershell
-cd $env:USERPROFILE\Sites\docker-global
+cd $env:USERPROFILE\Sites\docker-gateway
 .\setup.ps1
 # or: npm run setup
 # or double-click: setup.bat
@@ -281,7 +281,7 @@ The central dashboard (`https://<your-app-domain>.ts.net/`) includes:
 ## 📂 Repository Directory Structure
 
 ```text
-docker-global/
+docker-gateway/
 ├── docker-compose.yml           # Central orchestration for Tailscale, Nginx, & Tomcat
 ├── Dockerfile.tomcat            # Custom Tomcat 9 image with auto-configured manager
 ├── entrypoint-tomcat.sh         # Configures Tomcat users, valves, and webapp templates
