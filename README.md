@@ -13,23 +13,23 @@ A unified, centralized Docker development and deployment environment featuring:
 
 ```mermaid
 flowchart TD
-    User([Public Internet / Tailnet]) -->|HTTPS :443| TS_APP[Tailscale Funnel: local-app]
-    User -->|HTTPS :443| TS_QA[Tailscale Funnel: local-qa]
+    User(["Public Internet / Tailnet"]) -->|"HTTPS :443"| TS_APP["Tailscale Funnel: local-app"]
+    User -->|"HTTPS :443"| TS_QA["Tailscale Funnel: local-qa"]
 
     subgraph "Nginx Web Gateway (local-app)"
-        TS_APP -->|:80| MainNginx[global-nginx Gateway]
-        MainNginx -->|/| Dashboard[Live Sync Dashboard]
-        MainNginx -->|/status.json| StatusAPI[Live Status Metadata API]
-        MainNginx -->|/project-one/*| App1[Container: app-project-one]
-        MainNginx -->|/project-two/*| App2[Container: app-project-two]
-        MainNginx -->|/{any-project}/*| AppN[Container: app-{any-project}]
+        TS_APP -->|":80"| MainNginx["global-nginx Gateway"]
+        MainNginx -->|"/"| Dashboard["Live Sync Dashboard"]
+        MainNginx -->|"/status.json"| StatusAPI["Live Status Metadata API"]
+        MainNginx -->|"/project-one/*"| App1["Container: app-project-one"]
+        MainNginx -->|"/project-two/*"| App2["Container: app-project-two"]
+        MainNginx -->|"/project-n/*"| AppN["Container: app-project-n"]
     end
 
     subgraph "Apache Tomcat Stack (local-qa)"
-        TS_QA -->|:8080| TomcatServer[global-tomcat :8080]
-        TomcatServer -->|/app-one/*| War1[webapps/app-one.war]
-        TomcatServer -->|/app-two/*| War2[webapps/app-two.war]
-        TomcatServer -->|/manager/html| Manager[Tomcat Web Manager]
+        TS_QA -->|":8080"| TomcatServer["global-tomcat :8080"]
+        TomcatServer -->|"/app-one/*"| War1["webapps/app-one.war"]
+        TomcatServer -->|"/app-two/*"| War2["webapps/app-two.war"]
+        TomcatServer -->|"/manager/html"| Manager["Tomcat Web Manager"]
     end
 ```
 
@@ -37,12 +37,12 @@ flowchart TD
 
 ## 🌐 Public Endpoints
 
-| Domain | Destination | Description |
-| :--- | :--- | :--- |
-| **`https://<your-app-domain>.ts.net/`** | **Live Gateway Dashboard** | Real-time interactive dashboard tracking all Web & Tomcat apps. |
-| **`https://<your-app-domain>.ts.net/<project>/`** | **Project Container (`app-<project>`)** | Dedicated SPA container (e.g. `/my-web-app/`, `/customer-portal/`, `/ecommerce-frontend/`). |
-| **`https://<your-qa-domain>.ts.net/<app>/`** | **Tomcat Webapps** | Direct Java WAR deployments without any prefix required. |
-| **`https://<your-qa-domain>.ts.net/manager/html`** | **Tomcat Manager UI** | Inspect, hot-reload, and manage WAR deployments. |
+| Domain                                                     | Destination                                     | Description                                                                                      |
+| :--------------------------------------------------------- | :---------------------------------------------- | :----------------------------------------------------------------------------------------------- |
+| **`https://<your-app-domain>.ts.net/`**            | **Live Gateway Dashboard**                | Real-time interactive dashboard tracking all Web & Tomcat apps.                                  |
+| **`https://<your-app-domain>.ts.net/<project>/`**  | **Project Container (`app-<project>`)** | Dedicated SPA container (e.g.`/my-web-app/`, `/customer-portal/`, `/ecommerce-frontend/`). |
+| **`https://<your-qa-domain>.ts.net/<app>/`**       | **Tomcat Webapps**                        | Direct Java WAR deployments without any prefix required.                                         |
+| **`https://<your-qa-domain>.ts.net/manager/html`** | **Tomcat Manager UI**                     | Inspect, hot-reload, and manage WAR deployments.                                                 |
 
 > [!NOTE]
 > All application cards and links on the central dashboard open in a **new browser tab** (`target="_blank"`).
@@ -149,6 +149,7 @@ dzip
 ```
 
 **What happens automatically:**
+
 1. Compiles production assets and packages `<project>/release/${name}##V${version}.zip`.
 2. Extracts the ZIP into `projects/<project-name>/html/`.
 3. Creates or updates container `app-<project-name>`.
@@ -177,6 +178,7 @@ dwar
 ```
 
 **What happens automatically:**
+
 1. Builds Java WAR artifact (`release/*.war` or `target/*.war`).
 2. Cleans previous versions in `webapps/` and copies the new `.war`.
 3. Live immediately on Tomcat QA at `https://<your-qa-domain>.ts.net/<app>/`.
@@ -198,11 +200,11 @@ Runs **`dwar && dzip`** in sequence to build both the WAR archive (Tomcat) and Z
 
 You can manage individual containers without touching `docker-compose`:
 
-| Command | Action | Example |
-| :--- | :--- | :--- |
-| **`dstop <project>`** / **`d-stop`** | Stops the project container & marks it 🔴 **Stopped** on the live dashboard | `dstop my-web-app` |
-| **`dstart <project>`** / **`d-start`** | Starts the project container & restores status to 🟢 **Live** | `dstart my-web-app` |
-| **`drm <project>`** / **`d-rm`** | Stops container, deletes project files, and removes card from dashboard | `drm my-web-app` |
+| Command                                                | Action                                                                           | Example               |
+| :----------------------------------------------------- | :------------------------------------------------------------------------------- | :-------------------- |
+| **`dstop <project>`** / **`d-stop`**   | Stops the project container & marks it 🔴**Stopped** on the live dashboard | `dstop my-web-app`  |
+| **`dstart <project>`** / **`d-start`** | Starts the project container & restores status to 🟢**Live**               | `dstart my-web-app` |
+| **`drm <project>`** / **`d-rm`**       | Stops container, deletes project files, and removes card from dashboard          | `drm my-web-app`    |
 
 *(If you omit `<project>`, the commands automatically detect the project in your current working directory).*
 
@@ -268,17 +270,17 @@ docker-global/
 
 ## 🛠️ CLI Shortcut Reference
 
-| Task | Command |
-| :--- | :--- |
-| **Deploy ZIP Release** | `dzip` |
-| **Deploy Web Frontend** | `dweb` |
-| **Deploy Java WAR** | `dwar` |
-| **Deploy Both (WAR + ZIP)** | `dall` |
-| **Stop Project Container** | `dstop <name>` or `d-stop` |
-| **Start Project Container** | `dstart <name>` or `d-start` |
-| **Remove Project & Container** | `drm <name>` or `d-rm` |
-| **Start Global Stack** | `d-up` |
-| **Stop Global Stack** | `d-down` |
-| **Restart Global Stack** | `d-restart` |
-| **View Running Containers** | `d-ps` |
-| **View Live Stack Logs** | `d-logs` |
+| Task                                 | Command                          |
+| :----------------------------------- | :------------------------------- |
+| **Deploy ZIP Release**         | `dzip`                         |
+| **Deploy Web Frontend**        | `dweb`                         |
+| **Deploy Java WAR**            | `dwar`                         |
+| **Deploy Both (WAR + ZIP)**    | `dall`                         |
+| **Stop Project Container**     | `dstop <name>` or `d-stop`   |
+| **Start Project Container**    | `dstart <name>` or `d-start` |
+| **Remove Project & Container** | `drm <name>` or `d-rm`       |
+| **Start Global Stack**         | `d-up`                         |
+| **Stop Global Stack**          | `d-down`                       |
+| **Restart Global Stack**       | `d-restart`                    |
+| **View Running Containers**    | `d-ps`                         |
+| **View Live Stack Logs**       | `d-logs`                       |
