@@ -1,6 +1,29 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { execSync } = require("child_process");
+
+function loadEnv(globalDir) {
+  const envPath = path.join(globalDir, ".env");
+  const env = {};
+  if (fs.existsSync(envPath)) {
+    const lines = fs.readFileSync(envPath, "utf8").split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx !== -1) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        let val = trimmed.slice(eqIdx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        env[key] = val;
+      }
+    }
+  }
+  return { ...env, ...process.env };
+}
 
 function getTailscaleDomain(containerName, fallbackHost) {
   try {
@@ -42,6 +65,11 @@ function updateGlobalDashboard() {
     const globalHtmlDir = path.join(globalDir, "html");
 
     fs.mkdirSync(globalHtmlDir, { recursive: true });
+
+    const env = loadEnv(globalDir);
+    const dashboardAdminUser = env.DASHBOARD_ADMIN_USER || env.TOMCAT_ADMIN_USER || "admin";
+    const dashboardAdminPassword = env.DASHBOARD_ADMIN_PASSWORD || env.TOMCAT_ADMIN_PASSWORD || "1";
+    const dashboardPassHash = crypto.createHash("sha256").update(dashboardAdminPassword).digest("hex");
 
     const appDomain = getTailscaleDomain("tailscale-app", "local-app");
     const qaDomain = getTailscaleDomain("tailscale-qa", "local-qa");
@@ -1552,6 +1580,10 @@ function updateGlobalDashboard() {
   <script>
     const AUTH_SESSION_KEY = "gateway_auth_session";
     const AUTH_CREDS_KEY = "gateway_auth_credentials";
+    const AUTH_CONFIG = {
+      username: "${dashboardAdminUser}",
+      passHash: "${dashboardPassHash}"
+    };
 
     // Immediate synchronous check before paint to ensure login state persists on refresh
     try {
@@ -1563,6 +1595,28 @@ function updateGlobalDashboard() {
         }
       }
     } catch (e) {}
+
+    async function computeSha256(str) {
+      if (window.crypto && window.crypto.subtle) {
+        const msgUint8 = new TextEncoder().encode(str);
+        const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgUint8);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+      return null;
+    }
+
+    function showAuthError(msg) {
+      const authErrorBanner = document.getElementById("auth-error");
+      const authErrorText = document.getElementById("auth-error-text");
+      if (authErrorBanner) {
+        authErrorBanner.style.display = "flex";
+        if (authErrorText) authErrorText.textContent = msg;
+        authErrorBanner.classList.remove("shake");
+        void authErrorBanner.offsetWidth;
+        authErrorBanner.classList.add("shake");
+      }
+    }
 
     window.togglePasswordVisibility = function(e) {
       if (e) {
@@ -1595,8 +1649,8 @@ function updateGlobalDashboard() {
       if (authOverlay) authOverlay.classList.add("hidden");
       if (appWrapper) appWrapper.classList.remove("locked");
       if (userProfileBar) userProfileBar.style.display = "flex";
-      if (authUsernameDisplay) authUsernameDisplay.textContent = username || "admin";
-      if (sidebarUsernameDisplay) sidebarUsernameDisplay.textContent = username || "admin";
+      if (authUsernameDisplay) authUsernameDisplay.textContent = username || AUTH_CONFIG.username;
+      if (sidebarUsernameDisplay) sidebarUsernameDisplay.textContent = username || AUTH_CONFIG.username;
       if (authErrorBanner) authErrorBanner.style.display = "none";
     };
 
@@ -1615,33 +1669,38 @@ function updateGlobalDashboard() {
       }
     };
 
-    window.handleLogin = function(e) {
+    window.handleLogin = async function(e) {
       if (e && e.preventDefault) e.preventDefault();
       const authUserInput = document.getElementById("auth-username");
       const authPassInput = document.getElementById("auth-password");
-      const authErrorBanner = document.getElementById("auth-error");
-      const authErrorText = document.getElementById("auth-error-text");
 
-      const user = (authUserInput && authUserInput.value ? authUserInput.value : "admin").trim();
+      const user = (authUserInput && authUserInput.value ? authUserInput.value : "").trim();
       const pass = (authPassInput && authPassInput.value ? authPassInput.value : "").trim();
 
-      // Allow any non-empty password
-      if (pass.length > 0) {
-        const sessionData = JSON.stringify({ authenticated: true, username: user || "admin", timestamp: Date.now() });
-        localStorage.setItem(AUTH_SESSION_KEY, sessionData);
-        sessionStorage.setItem(AUTH_SESSION_KEY, sessionData);
-        window.unlockDashboard(user || "admin");
+      if (!user || !pass) {
+        showAuthError("Please enter both username and password.");
+        if (!user && authUserInput) authUserInput.focus();
+        else if (!pass && authPassInput) authPassInput.focus();
         return;
       }
 
-      if (authErrorBanner) {
-        authErrorBanner.style.display = "flex";
-        if (authErrorText) authErrorText.textContent = "Please enter your password to sign in.";
-        authErrorBanner.classList.remove("shake");
-        void authErrorBanner.offsetWidth;
-        authErrorBanner.classList.add("shake");
+      const inputHash = await computeSha256(pass);
+      const isUserValid = user.toLowerCase() === AUTH_CONFIG.username.toLowerCase();
+      const isPassValid = inputHash ? (inputHash === AUTH_CONFIG.passHash) : (pass === "${dashboardAdminPassword}");
+
+      if (isUserValid && isPassValid) {
+        const sessionData = JSON.stringify({ authenticated: true, username: user, timestamp: Date.now() });
+        localStorage.setItem(AUTH_SESSION_KEY, sessionData);
+        sessionStorage.setItem(AUTH_SESSION_KEY, sessionData);
+        window.unlockDashboard(user);
+        return;
       }
-      if (authPassInput) authPassInput.focus();
+
+      showAuthError("Invalid username or password. Check .env configuration.");
+      if (authPassInput) {
+        authPassInput.value = "";
+        authPassInput.focus();
+      }
     };
 
     window.handleLogout = function() {
@@ -2227,3 +2286,8 @@ module.exports = {
   updateGlobalDashboard,
   getTailscaleDomain,
 };
+
+if (require.main === module) {
+  updateGlobalDashboard();
+}
+

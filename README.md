@@ -120,6 +120,10 @@ PORT_QA=8081
 TOMCAT_IMAGE=tomcat:9.0.16-jre11
 TOMCAT_ADMIN_USER=your_admin_user
 TOMCAT_ADMIN_PASSWORD=your_secure_password
+
+# Dashboard Login Credentials
+DASHBOARD_ADMIN_USER=admin
+DASHBOARD_ADMIN_PASSWORD=your_dashboard_password
 ```
 
 Verify that all base containers are healthy:
