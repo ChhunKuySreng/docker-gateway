@@ -3,6 +3,20 @@ const path = require("path");
 const { execSync } = require("child_process");
 const { updateGlobalDashboard } = require("./dashboard-generator.cjs");
 
+// Ensure Docker is in PATH on Windows
+if (process.platform === "win32") {
+  const possibleDockerPaths = [
+    path.join(process.env.LOCALAPPDATA || "", "Programs", "DockerDesktop", "resources", "bin"),
+    "C:\\Program Files\\Docker\\Docker\\resources\\bin",
+    "C:\\Program Files (x86)\\Docker\\Docker\\resources\\bin",
+  ];
+  for (const p of possibleDockerPaths) {
+    if (p && fs.existsSync(p) && !process.env.PATH.includes(p)) {
+      process.env.PATH = `${p};${process.env.PATH}`;
+    }
+  }
+}
+
 const globalDir = path.resolve(__dirname, "..");
 const globalProjectsDir = path.join(globalDir, "projects");
 const globalWebappsDir = path.join(globalDir, "webapps");

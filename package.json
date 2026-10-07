@@ -12,5 +12,8 @@
     "deploy:war": "node scripts/deploy-war.cjs",
     "deploy:web": "node scripts/deploy-web.cjs",
     "deploy:zip": "node scripts/deploy-zip.cjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

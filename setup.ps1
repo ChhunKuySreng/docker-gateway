@@ -1,5 +1,5 @@
 # ==============================================================================
-# 🚀 Global Docker Stack Setup Script for Windows (PowerShell)
+# Global Docker Stack Setup Script for Windows (PowerShell)
 # ==============================================================================
 [CmdletBinding()]
 param()
@@ -9,7 +9,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Host ""
 Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host "   🚀 Setting up Global Docker Stack (Windows)        " -ForegroundColor Cyan
+Write-Host "   Setting up Global Docker Stack (Windows)           " -ForegroundColor Cyan
 Write-Host "======================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -18,34 +18,40 @@ Write-Host "[1/5] Checking prerequisites..." -ForegroundColor Cyan
 
 if (Get-Command docker -ErrorAction SilentlyContinue) {
     $dockerVer = docker --version
-    Write-Host "  ✔ Docker is installed: $dockerVer" -ForegroundColor Green
+    Write-Host "  [+] Docker is installed: $dockerVer" -ForegroundColor Green
 } else {
-    Write-Host "  ✖ Docker is NOT installed. Please install Docker Desktop from https://www.docker.com/products/docker-desktop/" -ForegroundColor Red
+    Write-Host "  [-] Docker is NOT installed. Please install Docker Desktop from https://www.docker.com/products/docker-desktop/" -ForegroundColor Red
     Exit 1
 }
 
 try {
     docker info > $null 2>&1
-    Write-Host "  ✔ Docker daemon is running." -ForegroundColor Green
+    Write-Host "  [+] Docker daemon is running." -ForegroundColor Green
 } catch {
-    Write-Host "  ⚠ Docker daemon is not running. Please launch Docker Desktop and run this script again." -ForegroundColor Yellow
+    Write-Host "  [!] Docker daemon is not running. Please launch Docker Desktop and run this script again." -ForegroundColor Yellow
     Exit 1
 }
 
 if (Get-Command node -ErrorAction SilentlyContinue) {
     $nodeVer = node --version
-    Write-Host "  ✔ Node.js is installed: $nodeVer" -ForegroundColor Green
+    $nodeMajor = [int](node -e "console.log(process.versions.node.split('.')[0])")
+    if ($nodeMajor -ge 18) {
+        Write-Host "  [+] Node.js is installed: $nodeVer (>= 18 LTS)" -ForegroundColor Green
+    } else {
+        Write-Host "  [-] Node.js $nodeVer is too old. Please upgrade to Node.js 18 LTS, 20 LTS, or 22+ from https://nodejs.org/" -ForegroundColor Red
+        Exit 1
+    }
 } else {
-    Write-Host "  ✖ Node.js is NOT installed. Please install Node.js (v18+) from https://nodejs.org/" -ForegroundColor Red
+    Write-Host "  [-] Node.js is NOT installed. Please install Node.js (18 LTS, 20 LTS, or 22+) from https://nodejs.org/" -ForegroundColor Red
     Exit 1
 }
 
 if (Get-Command yarn -ErrorAction SilentlyContinue) {
     $yarnVer = yarn --version
-    Write-Host "  ✔ Yarn is installed: $yarnVer" -ForegroundColor Green
+    Write-Host "  [+] Yarn is installed: $yarnVer" -ForegroundColor Green
 } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
     $npmVer = npm --version
-    Write-Host "  ✔ npm is installed: $npmVer" -ForegroundColor Green
+    Write-Host "  [+] npm is installed: $npmVer" -ForegroundColor Green
 }
 
 # 2. Setup .env file
@@ -57,13 +63,17 @@ $envExample = Join-Path $ScriptDir ".env.example"
 if (-not (Test-Path $envFile)) {
     if (Test-Path $envExample) {
         Copy-Item $envExample $envFile
-        Write-Host "  ✔ Created .env from .env.example" -ForegroundColor Green
-        Write-Host "  👉 IMPORTANT: Please open .env and set your TS_AUTHKEY if not already set." -ForegroundColor Yellow
+        Write-Host "  [+] Created .env from .env.example" -ForegroundColor Green
+        Write-Host "  [!] IMPORTANT: Please open .env and set your TS_AUTHKEY." -ForegroundColor Yellow
     } else {
-        Write-Host "  ✖ .env.example not found." -ForegroundColor Red
+        Write-Host "  [-] .env.example not found." -ForegroundColor Red
     }
 } else {
-    Write-Host "  ✔ .env already exists." -ForegroundColor Green
+    Write-Host "  [+] .env already exists." -ForegroundColor Green
+    $envContent = Get-Content $envFile -Raw -ErrorAction SilentlyContinue
+    if ($envContent -match "tskey-auth-your-key-here" -or $envContent -match "TS_AUTHKEY=\s*`r?`n" -or $envContent -match 'TS_AUTHKEY=(""|'''')') {
+        Write-Host "  [!] TS_AUTHKEY appears unset or default in .env. Please set your key for Tailscale HTTPS." -ForegroundColor Yellow
+    }
 }
 
 # 3. Create required folders
@@ -80,7 +90,7 @@ foreach ($folder in $folders) {
         New-Item -ItemType File -Path $keepFile -Force | Out-Null
     }
 }
-Write-Host "  ✔ html\, webapps\, and projects\ ready." -ForegroundColor Green
+Write-Host "  [+] html\, webapps\, and projects\ ready." -ForegroundColor Green
 
 # 4. Install PowerShell Profile Shortcuts
 Write-Host ""
@@ -138,7 +148,7 @@ $UpdatedProfile = [regex]::Replace($ProfileContent, $Pattern, "").Trim()
 $UpdatedProfile = $UpdatedProfile + "`r`n`r`n" + $ShortcutsBlock + "`r`n"
 Set-Content -Path $ProfilePath -Value $UpdatedProfile -Encoding utf8
 
-Write-Host "  ✔ Injected shortcuts into PowerShell Profile: $ProfilePath" -ForegroundColor Green
+Write-Host "  [+] Injected shortcuts into PowerShell Profile: $ProfilePath" -ForegroundColor Green
 
 # 5. Start Docker Containers
 Write-Host ""
@@ -152,7 +162,7 @@ try {
 
 Write-Host ""
 Write-Host "======================================================" -ForegroundColor Green
-Write-Host "   🎉 Setup Completed Successfully!                   " -ForegroundColor Green
+Write-Host "   Setup Completed Successfully!                      " -ForegroundColor Green
 Write-Host "======================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "To activate the shortcuts in your current PowerShell session, run:" -ForegroundColor Yellow

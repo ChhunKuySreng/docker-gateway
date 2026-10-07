@@ -7,6 +7,7 @@ set -e
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
@@ -36,9 +37,16 @@ else
 fi
 
 if command -v node >/dev/null 2>&1; then
-    echo -e "  ${GREEN}✔ Node.js is installed:${NC} $(node --version)"
+    NODE_VER=$(node --version)
+    NODE_MAJOR=$(node -e "console.log(process.versions.node.split('.')[0])")
+    if [ "$NODE_MAJOR" -ge 18 ]; then
+        echo -e "  ${GREEN}✔ Node.js is installed:${NC} $NODE_VER (>= 18 LTS)"
+    else
+        echo -e "  ${RED}✖ Node.js $NODE_VER is too old.${NC} Please upgrade to Node.js 18 LTS, 20 LTS, or 22+ (run: nvm install 20 && nvm use 20)"
+        exit 1
+    fi
 else
-    echo -e "  ${RED}✖ Node.js is NOT installed.${NC} Please install Node.js (v18+) from https://nodejs.org/"
+    echo -e "  ${RED}✖ Node.js is NOT installed.${NC} Please install Node.js (18 LTS, 20 LTS, or 22+) from https://nodejs.org/"
     exit 1
 fi
 
@@ -54,12 +62,15 @@ if [ ! -f "$SCRIPT_DIR/.env" ]; then
     if [ -f "$SCRIPT_DIR/.env.example" ]; then
         cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
         echo -e "  ${GREEN}✔ Created .env from .env.example${NC}"
-        echo -e "  ${YELLOW}👉 IMPORTANT: Please open .env and set your TS_AUTHKEY if not already set.${NC}"
+        echo -e "  ${YELLOW}👉 IMPORTANT: Please open .env and set your TS_AUTHKEY.${NC}"
     else
         echo -e "  ${RED}✖ .env.example not found.${NC}"
     fi
 else
     echo -e "  ${GREEN}✔ .env already exists.${NC}"
+    if grep -Eq "TS_AUTHKEY=(tskey-auth-your-key-here|\"\"|''|$)" "$SCRIPT_DIR/.env"; then
+        echo -e "  ${YELLOW}⚠ TS_AUTHKEY appears unset or default in .env. Please set your key for Tailscale HTTPS.${NC}"
+    fi
 fi
 
 # 3. Create required folders

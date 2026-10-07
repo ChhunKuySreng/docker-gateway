@@ -3,6 +3,20 @@ const path = require("path");
 const crypto = require("crypto");
 const { execSync } = require("child_process");
 
+// Ensure Docker is in PATH on Windows
+if (process.platform === "win32") {
+  const possibleDockerPaths = [
+    path.join(process.env.LOCALAPPDATA || "", "Programs", "DockerDesktop", "resources", "bin"),
+    "C:\\Program Files\\Docker\\Docker\\resources\\bin",
+    "C:\\Program Files (x86)\\Docker\\Docker\\resources\\bin",
+  ];
+  for (const p of possibleDockerPaths) {
+    if (p && fs.existsSync(p) && !process.env.PATH.includes(p)) {
+      process.env.PATH = `${p};${process.env.PATH}`;
+    }
+  }
+}
+
 function loadEnv(globalDir) {
   const envPath = path.join(globalDir, ".env");
   const env = {};
@@ -41,7 +55,7 @@ function getTailscaleDomain(containerName, fallbackHost) {
 
 function getRunningContainers() {
   try {
-    const ps = execSync("docker ps --format '{{.Names}}'", {
+    const ps = execSync('docker ps --format "{{.Names}}"', {
       encoding: "utf8",
       stdio: ["pipe", "pipe", "ignore"],
     });

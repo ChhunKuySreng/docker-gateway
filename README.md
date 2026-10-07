@@ -49,9 +49,56 @@ flowchart TD
 
 ---
 
-## 💻 New Device Quick Setup
+## 📋 Pre-Setup Checklist (Before You Run Setup)
 
-Setting up on a new machine is completely automated with a single command:
+Before running the automated setup script, make sure you have the following ready:
+
+### 1. 🐳 Install & Start Docker Desktop
+- **Download**: [Docker Desktop](https://www.docker.com/products/docker-desktop/) for macOS, Windows, or Linux.
+- **Start**: Launch Docker Desktop and ensure the status indicates **"Engine running"**.
+
+### 2. 🟢 Install Node.js (18 LTS, 20 LTS, or 22+)
+- **Required**: Node.js `>= 18.0.0` (Node 18 LTS, 20 LTS, or 22+). *Note: Node 14 & 16 are not supported due to missing modern filesystem APIs like `fs.cpSync`.*
+- **Download**: [Node.js Official Website](https://nodejs.org/)
+- **Using NVM** (recommended):
+  ```bash
+  nvm install 20 && nvm use 20
+  ```
+- **Verify**: Run `node -v` in your terminal to ensure version `>= 18.0.0`.
+- *(Optional)* Install Yarn globally if preferred: `npm install -g yarn`.
+
+### 3. 🔑 Obtain Tailscale Auth Key
+1. Go to the [Tailscale Admin Console → Settings → Keys](https://login.tailscale.com/admin/settings/keys).
+2. Click **Generate Auth Key**.
+3. Recommended settings:
+   - ✅ **Reusable**: Yes (so both `local-app` and `local-qa` containers can authenticate).
+   - ✅ **Ephemeral**: Optional (auto-cleans up inactive nodes from your tailnet).
+   - ✅ **Pre-authorized**: Yes (skips manual machine approval in admin dashboard).
+4. Copy your generated key (`tskey-auth-...`).
+
+### 4. 📝 Configure `.env` File
+Create your `.env` configuration file from the template:
+
+**macOS / Linux:**
+```bash
+cp .env.example .env
+```
+
+**Windows PowerShell:**
+```powershell
+Copy-Item .env.example .env
+```
+
+Open `.env` in your editor and paste your `TS_AUTHKEY`:
+```env
+TS_AUTHKEY=tskey-auth-kXXXXX-XXXXXXCNTRL
+```
+
+---
+
+## 💻 Automated Setup Guide
+
+Once the prerequisites above are completed, run the setup script for your platform:
 
 ### 🍏 For macOS / Linux
 
@@ -245,6 +292,9 @@ docker-global/
 ├── .env.example                 # Template environment file (committed to Git)
 ├── .gitignore                   # Ignores .env, node_modules, and deployed builds
 ├── package.json                 # NPM helper commands
+├── setup.sh                     # macOS / Linux automated setup script
+├── setup.ps1                    # Windows PowerShell automated setup script
+├── setup.bat                    # Windows batch setup launcher
 ├── README.md                    # Stack documentation and setup guide
 │
 ├── html/                        # Central Dashboard UI (https://<your-app-domain>.ts.net/)
@@ -262,6 +312,7 @@ docker-global/
 ├── webapps/                     # Central volume for Tomcat WARs (e.g. <app-name>.war)
 │
 └── scripts/
+    ├── setup.cjs                # Cross-platform setup launcher
     ├── dashboard-generator.cjs  # Shared real-time dashboard & status.json generator
     ├── deploy-war.cjs           # Smart WAR build & deploy to Tomcat QA
     ├── deploy-web.cjs           # Smart Web build & per-project container lifecycle

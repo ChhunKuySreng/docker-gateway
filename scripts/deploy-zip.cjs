@@ -14,6 +14,20 @@ if (!fs.existsSync(resolvedInput)) {
 
 const isWin = process.platform === "win32";
 
+// Ensure Docker is in PATH on Windows
+if (isWin) {
+  const possibleDockerPaths = [
+    path.join(process.env.LOCALAPPDATA || "", "Programs", "DockerDesktop", "resources", "bin"),
+    "C:\\Program Files\\Docker\\Docker\\resources\\bin",
+    "C:\\Program Files (x86)\\Docker\\Docker\\resources\\bin",
+  ];
+  for (const p of possibleDockerPaths) {
+    if (p && fs.existsSync(p) && !process.env.PATH.includes(p)) {
+      process.env.PATH = `${p};${process.env.PATH}`;
+    }
+  }
+}
+
 const hasCommand = (cmd) => {
   try {
     execSync(isWin ? `where ${cmd}` : `command -v ${cmd}`, { stdio: "ignore" });
@@ -27,7 +41,7 @@ const hasYarn = hasCommand("yarn");
 
 const isDockerRunning = () => {
   try {
-    const ps = execSync("docker ps --format '{{.Names}}'", {
+    const ps = execSync('docker ps --format "{{.Names}}"', {
       encoding: "utf8",
       stdio: ["pipe", "pipe", "ignore"],
     });
@@ -35,6 +49,19 @@ const isDockerRunning = () => {
   } catch (e) {
     return false;
   }
+};
+
+const getDockerNetwork = () => {
+  try {
+    const raw = execSync('docker inspect tailscale-app --format "{{json .NetworkSettings.Networks}}"', {
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+    const parsed = JSON.parse(raw);
+    const keys = Object.keys(parsed);
+    if (keys.length > 0) return keys[0];
+  } catch (e) {}
+  return "docker-global_default";
 };
 
 const extractZip = (srcZip, destDir) => {
@@ -285,15 +312,12 @@ fs.writeFileSync(
 const containerName = `app-${contextName}`;
 try {
   console.log(`🔄 Updating container [${containerName}]...`);
-  execSync(`docker rm -f ${containerName} 2>/dev/null || true`, { stdio: "ignore" });
+  try {
+    execSync(`docker rm -f ${containerName}`, { stdio: "ignore" });
+  } catch (e) {}
 
-  const runCmd = `docker run -d \
-    --name ${containerName} \
-    --network docker-global_default \
-    --restart unless-stopped \
-    -v "${targetHtmlDir}:/usr/share/nginx/html:ro" \
-    -v "${path.join(targetProjectDir, "nginx.conf")}:/etc/nginx/conf.d/default.conf:ro" \
-    nginx:alpine`;
+  const targetNetwork = getDockerNetwork();
+  const runCmd = `docker run -d --name ${containerName} --network ${targetNetwork} --restart unless-stopped -v "${targetHtmlDir}:/usr/share/nginx/html:ro" -v "${path.join(targetProjectDir, "nginx.conf")}:/etc/nginx/conf.d/default.conf:ro" nginx:alpine`;
 
   execSync(runCmd, { stdio: "ignore" });
 } catch (err) {
