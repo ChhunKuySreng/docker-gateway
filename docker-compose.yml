@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # =======================================================
+  # 1. NGINX APP SERVICE (https://<your-app-domain>.ts.net)
+  # =======================================================
+  tailscale-app:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-app
+    hostname: ${TS_HOSTNAME_APP:-local-app}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_HOSTNAME=${TS_HOSTNAME_APP:-local-app}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+      - TS_SERVE_CONFIG=/config/ts-serve-app.json
+    volumes:
+      - ts-state:/var/lib/tailscale
+      - ./ts-serve-app.json:/config/ts-serve-app.json:ro
+    ports:
+      - "${PORT_APP:-8080}:80"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: global-nginx
+    restart: unless-stopped
+    network_mode: service:tailscale-app
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./html:/usr/share/nginx/html:ro
+    depends_on:
+      - tailscale-app
+
+  # =======================================================
+  # 2. TOMCAT QA SERVICE (https://<your-qa-domain>.ts.net)
+  # =======================================================
+  tailscale-qa:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-qa
+    hostname: ${TS_HOSTNAME_QA:-local-qa}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_HOSTNAME=${TS_HOSTNAME_QA:-local-qa}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+      - TS_SERVE_CONFIG=/config/ts-serve-qa.json
+    volumes:
+      - ts-state-qa:/var/lib/tailscale
+      - ./ts-serve-qa.json:/config/ts-serve-qa.json:ro
+    ports:
+      - "${PORT_QA:-8081}:8080"
+    restart: unless-stopped
+
+  tomcat:
+    build:
+      context: .
+      dockerfile: Dockerfile.tomcat
+      args:
+        - TOMCAT_IMAGE=${TOMCAT_IMAGE:-tomcat:9.0.16-jre11}
+    image: global-tomcat-img
+    container_name: global-tomcat
+    restart: unless-stopped
+    network_mode: service:tailscale-qa
+    environment:
+      - TOMCAT_ADMIN_USER=${TOMCAT_ADMIN_USER}
+      - TOMCAT_ADMIN_PASSWORD=${TOMCAT_ADMIN_PASSWORD}
+    volumes:
+      - ./webapps:/usr/local/tomcat/webapps
+    depends_on:
+      - tailscale-qa
+
+volumes:
+  ts-state:
+  ts-state-qa:

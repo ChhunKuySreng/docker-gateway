@@ -1,0 +1,13 @@
+ARG TOMCAT_IMAGE=tomcat:9.0.16-jre11
+FROM ${TOMCAT_IMAGE}
+
+# Save default manager webapps template
+RUN cp -r /usr/local/tomcat/webapps.dist /usr/local/tomcat/webapps.template 2>/dev/null || \
+    cp -r /usr/local/tomcat/webapps /usr/local/tomcat/webapps.template
+
+# Copy startup entrypoint script
+COPY entrypoint-tomcat.sh /entrypoint-tomcat.sh
+RUN chmod +x /entrypoint-tomcat.sh
+
+EXPOSE 8080
+ENTRYPOINT ["/entrypoint-tomcat.sh"]

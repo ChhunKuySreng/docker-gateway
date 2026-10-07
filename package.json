@@ -1,0 +1,16 @@
+{
+  "name": "docker-global",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Global Tailscale + Nginx + Tomcat Stack",
+  "scripts": {
+    "setup": "node scripts/setup.cjs",
+    "up": "docker compose up -d",
+    "down": "docker compose down",
+    "restart": "docker compose restart",
+    "logs": "docker compose logs -f",
+    "deploy:war": "node scripts/deploy-war.cjs",
+    "deploy:web": "node scripts/deploy-web.cjs",
+    "deploy:zip": "node scripts/deploy-zip.cjs"
+  }
+}
