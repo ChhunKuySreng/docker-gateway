@@ -73,11 +73,70 @@ else
     fi
 fi
 
-# 3. Create required folders
-echo -e "\n${BLUE}[3/5] Initializing workspace directories...${NC}"
-mkdir -p "$SCRIPT_DIR/html" "$SCRIPT_DIR/webapps" "$SCRIPT_DIR/projects"
-touch "$SCRIPT_DIR/html/.gitkeep" "$SCRIPT_DIR/webapps/.gitkeep" "$SCRIPT_DIR/projects/.gitkeep"
-echo -e "  ${GREEN}✔ html/, webapps/, and projects/ ready.${NC}"
+# 3. Create required folders & configuration files
+echo -e "\n${BLUE}[3/5] Initializing workspace directories & configs...${NC}"
+mkdir -p "$SCRIPT_DIR/html" "$SCRIPT_DIR/webapps" "$SCRIPT_DIR/projects" "$SCRIPT_DIR/mysql-init" "$SCRIPT_DIR/html-dev" "$SCRIPT_DIR/ytbot/downloads"
+touch "$SCRIPT_DIR/html/.gitkeep" "$SCRIPT_DIR/webapps/.gitkeep" "$SCRIPT_DIR/projects/.gitkeep" "$SCRIPT_DIR/mysql-init/.gitkeep" "$SCRIPT_DIR/ytbot/downloads/.gitkeep"
+
+# Ensure nginx-main.conf exists with NJS module loading enabled
+if [ ! -f "$SCRIPT_DIR/nginx-main.conf" ]; then
+    cat <<'EOF' > "$SCRIPT_DIR/nginx-main.conf"
+load_module modules/ngx_http_js_module.so;
+
+user  nginx;
+worker_processes  auto;
+
+error_log  /var/log/nginx/error.log notice;
+pid        /run/nginx.pid;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    keepalive_timeout  65;
+
+    include /etc/nginx/conf.d/*.conf;
+}
+EOF
+    echo -e "  ${GREEN}✔ Created nginx-main.conf with NJS module enabled.${NC}"
+fi
+
+# Ensure html/robots.txt exists for search & social bots
+if [ ! -f "$SCRIPT_DIR/html/robots.txt" ]; then
+    cat <<'EOF' > "$SCRIPT_DIR/html/robots.txt"
+User-agent: *
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: Facebot
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: TelegramBot
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+EOF
+    echo -e "  ${GREEN}✔ Created html/robots.txt (allowing social media bots).${NC}"
+fi
+
+echo -e "  ${GREEN}✔ Workspace directories & configurations initialized.${NC}"
 
 # 4. Install Global Terminal Shortcuts into Shell Profile
 echo -e "\n${BLUE}[4/5] Installing global shell shortcuts...${NC}"
@@ -121,6 +180,8 @@ alias d-down=\"cd \\\$DOCKER_GLOBAL_DIR && docker compose down && cd -\"
 alias d-restart=\"cd \\\$DOCKER_GLOBAL_DIR && docker compose restart && cd -\"
 alias d-ps=\"docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'\"
 alias d-logs=\"cd \\\$DOCKER_GLOBAL_DIR && docker compose logs -f\"
+alias dclean=\"bash \\\$DOCKER_GLOBAL_DIR/scripts/clean-ds-store.sh\"
+alias d-clean=\"dclean\"
 ${MARKER_END}"
 
 for PROFILE in "${SHELL_PROFILES[@]}"; do
@@ -162,4 +223,5 @@ echo -e "  ${GREEN}dall${NC}      Deploy both WAR and Web frontend"
 echo -e "  ${GREEN}d-up${NC}      Start all global Docker containers"
 echo -e "  ${GREEN}d-down${NC}    Stop all global Docker containers"
 echo -e "  ${GREEN}d-ps${NC}      View all running containers"
-echo -e "  ${GREEN}d-logs${NC}    Live stream container logs\n"
+echo -e "  ${GREEN}d-logs${NC}    Live stream container logs"
+echo -e "  ${GREEN}dclean${NC}    Remove all .DS_Store files across the workspace\n"

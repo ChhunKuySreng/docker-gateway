@@ -47,4 +47,51 @@ if [ -n "$TOMCAT_ADMIN_PASSWORD" ]; then
 EOF
 fi
 
+# Ensure MySQL Connector/J driver is present in Tomcat lib
+if [ ! -f /usr/local/tomcat/lib/mysql-connector-j-8.4.0.jar ]; then
+    curl -fsSL -o /usr/local/tomcat/lib/mysql-connector-j-8.4.0.jar \
+        https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.4.0/mysql-connector-j-8.4.0.jar 2>/dev/null || true
+fi
+
+# Configure global MySQL DataSource if DB_HOST is set
+DB_HOST=${DB_HOST:-local-db}
+DB_PORT=${DB_PORT:-3306}
+DB_NAME=${DB_NAME:-app_db}
+DB_USER=${DB_USER:-admin}
+DB_PASSWORD=${DB_PASSWORD:-admin123}
+
+cat << EOF > /usr/local/tomcat/conf/context.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Context>
+    <WatchedResource>WEB-INF/web.xml</WatchedResource>
+    <WatchedResource>WEB-INF/tomcat-web.xml</WatchedResource>
+    <WatchedResource>\${catalina.base}/conf/web.xml</WatchedResource>
+
+    <!-- Global MySQL DataSource for Web Applications (JNDI: jdbc/app_db) -->
+    <Resource name="jdbc/app_db"
+              auth="Container"
+              type="javax.sql.DataSource"
+              maxTotal="30"
+              maxIdle="10"
+              maxWaitMillis="10000"
+              username="${DB_USER}"
+              password="${DB_PASSWORD}"
+              driverClassName="com.mysql.cj.jdbc.Driver"
+              url="jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC&amp;characterEncoding=UTF-8" />
+
+    <!-- Common alias (JNDI: jdbc/DefaultDB) -->
+    <Resource name="jdbc/DefaultDB"
+              auth="Container"
+              type="javax.sql.DataSource"
+              maxTotal="30"
+              maxIdle="10"
+              maxWaitMillis="10000"
+              username="${DB_USER}"
+              password="${DB_PASSWORD}"
+              driverClassName="com.mysql.cj.jdbc.Driver"
+              url="jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC&amp;characterEncoding=UTF-8" />
+</Context>
+EOF
+
 exec catalina.sh run
+

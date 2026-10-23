@@ -1,11 +1,14 @@
-# 🚀 Multi-Project Docker Gateway (Tailscale + Nginx + Apache Tomcat)
+# 🚀 Multi-Project Docker Gateway (Tailscale + Nginx + Apache Tomcat + Dev Hub + MySQL)
 
 A unified, centralized Docker development and deployment gateway environment featuring:
 
-- **Dual Tailscale HTTPS Funnels**: Public HTTPS domains for both Web Apps and Java WARs.
+- **5 Dedicated Tailscale HTTPS Funnels**: Public HTTPS domains for Web Apps, Java Tomcat, Local Dev Ports (3000-3999), Database (phpMyAdmin / MySQL), and Media Tools (YouTube Bot).
 - **Dynamic Multi-Container Web Gateway (Nginx)**: Automatically spins up dedicated, isolated containers for each web project (`1 Project = 1 Container = 1 Context Path`).
+- **Apache Tomcat 9 (Java 11)**: Independent QA server for Java WAR webapps with built-in MySQL Connector/J driver and pre-configured JNDI DataSources.
+- **Local Dev Hub (Ports 3000–3999)**: Live reverse-proxy for host dev servers (Vite, Next.js, React, Express) over public Tailscale HTTPS with real-time SSE discovery, cookie-based root routing, and full WebSocket HMR support.
+- **Database Stack (MySQL 8.0 & phpMyAdmin)**: Fully configured MySQL database with persistence and phpMyAdmin web interface with extended configuration storage.
+- **Dynamic Social Media OpenGraph Previews (NJS)**: Automatically intercepts crawlers (Facebook, Telegram, WhatsApp, Twitter) to query live backend APIs for titles, images, and descriptions. Includes a standalone deployment package for production servers without Docker in `nginx-og-preview/`.
 - **Real-Time Live Dashboard**: Interactive Web & Tomcat catalog with live container health monitoring, instant search, filters, and auto-synchronization.
-- **Apache Tomcat 9 (Java 11)**: Independent QA server for Java WAR webapps.
 
 ---
 
@@ -13,23 +16,43 @@ A unified, centralized Docker development and deployment gateway environment fea
 
 ```mermaid
 flowchart TD
-    User(["Public Internet / Tailnet"]) -->|"HTTPS :443"| TS_APP["Tailscale Funnel: local-app"]
-    User -->|"HTTPS :443"| TS_QA["Tailscale Funnel: local-qa"]
+    User(["Public Internet / Tailnet"]) -->|"HTTPS :443"| TS_APP["Tailscale: local-app"]
+    User -->|"HTTPS :443"| TS_QA["Tailscale: local-qa"]
+    User -->|"HTTPS :443"| TS_DEV["Tailscale: local-dev"]
+    User -->|"HTTPS :443"| TS_DB["Tailscale: local-db"]
+    User -->|"HTTPS :443"| TS_YTBOT["Tailscale: local-ytbot"]
 
-    subgraph "Nginx Web Gateway (local-app)"
+    subgraph "1. Web Gateway (local-app)"
         TS_APP -->|":80"| MainNginx["gateway-nginx Gateway"]
         MainNginx -->|"/"| Dashboard["Live Sync Dashboard"]
-        MainNginx -->|"/status.json"| StatusAPI["Live Status Metadata API"]
+        MainNginx -->|"/status.json"| StatusAPI["Status Metadata API"]
         MainNginx -->|"/project-one/*"| App1["Container: app-project-one"]
         MainNginx -->|"/project-two/*"| App2["Container: app-project-two"]
         MainNginx -->|"/project-n/*"| AppN["Container: app-project-n"]
     end
 
-    subgraph "Apache Tomcat Stack (local-qa)"
+    subgraph "2. Tomcat QA Stack (local-qa)"
         TS_QA -->|":8080"| TomcatServer["gateway-tomcat :8080"]
         TomcatServer -->|"/app-one/*"| War1["webapps/app-one.war"]
         TomcatServer -->|"/app-two/*"| War2["webapps/app-two.war"]
         TomcatServer -->|"/manager/html"| Manager["Tomcat Web Manager"]
+    end
+
+    subgraph "3. Local Dev Hub (local-dev)"
+        TS_DEV -->|":80"| DevNginx["gateway-dev :80"]
+        DevNginx -->|"/hub"| DevDashboard["Dev Hub Live Inspector"]
+        DevNginx -->|"/events"| SseServer["dev-sse Node Inspector"]
+        DevNginx -->|"/:port -> /"| HostDevServers["Host Dev Servers (:3000-:3999)"]
+    end
+
+    subgraph "4. Database Service (local-db)"
+        TS_DB -->|":80"| PMA["gateway-phpmyadmin :80"]
+        TS_DB -->|":3306"| MySQL["gateway-mysql :3306"]
+        TomcatServer -.->|"JDBC (local-db:3306)"| MySQL
+    end
+
+    subgraph "5. Media Bot (local-ytbot)"
+        TS_YTBOT -->|":8080"| YtBot["ytbot Python Service"]
     end
 ```
 
@@ -37,72 +60,106 @@ flowchart TD
 
 ## 🌐 Public Endpoints
 
-| Domain                                                     | Destination                                     | Description                                                                                      |
-| :--------------------------------------------------------- | :---------------------------------------------- | :----------------------------------------------------------------------------------------------- |
-| **`https://<your-app-domain>.ts.net/`**            | **Live Gateway Dashboard**                | Real-time interactive dashboard tracking all Web & Tomcat apps.                                  |
-| **`https://<your-app-domain>.ts.net/<project>/`**  | **Project Container (`app-<project>`)** | Dedicated SPA container (e.g.`/my-web-app/`, `/customer-portal/`, `/ecommerce-frontend/`). |
-| **`https://<your-qa-domain>.ts.net/<app>/`**       | **Tomcat Webapps**                        | Direct Java WAR deployments without any prefix required.                                         |
-| **`https://<your-qa-domain>.ts.net/manager/html`** | **Tomcat Manager UI**                     | Inspect, hot-reload, and manage WAR deployments.                                                 |
-
-> [!NOTE]
-> All application cards and links on the central dashboard open in a **new browser tab** (`target="_blank"`).
+| Service                      | Domain / URL                                           | Destination       | Description                                                                |
+| :--------------------------- | :----------------------------------------------------- | :---------------- | :------------------------------------------------------------------------- |
+| **Central Dashboard**  | `https://<your-app-domain>.ts.net/`                  | Gateway Dashboard | Real-time interactive dashboard tracking all deployed Web & Tomcat apps.   |
+| **Web SPA Containers** | `https://<your-app-domain>.ts.net/<project>/`        | `app-<project>` | Dedicated isolated container for each web application.                     |
+| **Tomcat QA Webapps**  | `https://<your-qa-domain>.ts.net/<app>/`             | Tomcat Webapps    | Direct Java WAR deployments without any context prefix.                    |
+| **Tomcat Manager**     | `https://<your-qa-domain>.ts.net/manager/html`       | Tomcat Manager UI | Inspect, hot-reload, and manage WAR deployments.                           |
+| **Local Dev Hub**      | `https://<your-dev-domain>.ts.net/hub`               | Dev Hub Dashboard | Live inspector dashboard auto-discovering active host ports (3000–3999).   |
+| **Dev Port Activator** | `https://<your-dev-domain>.ts.net/<3000-3999>`       | Root Proxy Session| Activates dev port via cookie and proxies at `/` with WebSocket/HMR.       |
+| **Dev Hub Reset**      | `https://<your-dev-domain>.ts.net/reset`             | Reset Session     | Clears active port cookie and returns to the Dev Hub dashboard.            |
+| **phpMyAdmin**         | `https://<your-db-domain>.ts.net/`                   | phpMyAdmin Web UI | Manage MySQL databases with full configuration storage.                    |
+| **MySQL Database**     | `<your-db-domain>.ts.net:3306`                       | MySQL 8.0 Server  | Direct MySQL connection for DBeaver, TablePlus, Navicat, or external apps. |
+| **YouTube Bot**        | `https://<your-ytbot-domain>.ts.net/`                | YouTube Media Bot | Web API and Telegram bot for media downloads.                              |
 
 ---
 
-## 📋 Pre-Setup Checklist (Before You Run Setup)
+## 🗄️ Database & Tomcat Connection Guide
 
-Before running the automated setup script, make sure you have the following ready:
+### 1. Connecting from Java / Tomcat Applications
+
+Tomcat is automatically linked with MySQL on the internal Docker network.
+
+* **Database Host:** `local-db` *(or `127.0.0.1` / `tailscale-db`)*
+* **Port:** `3306`
+* **Default Database:** `app_db`
+* **Application User:** `admin` / **Password:** `admin123`
+* **Root Superadmin:** `root` / **Password:** `root`
+
+#### Option A: Direct JDBC URL
+
+```java
+Class.forName("com.mysql.cj.jdbc.Driver");
+String url = "jdbc:mysql://local-db:3306/app_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
+Connection conn = DriverManager.getConnection(url, "admin", "admin123");
+```
+
+#### Option B: Global JNDI DataSource (`jdbc/app_db`)
+
+Tomcat has pre-configured connection pools in `conf/context.xml`:
+
+```java
+Context initCtx = new InitialContext();
+Context envCtx  = (Context) initCtx.lookup("java:comp/env");
+DataSource ds   = (DataSource) envCtx.lookup("jdbc/app_db"); // or "jdbc/DefaultDB"
+Connection conn = ds.getConnection();
+```
+
+#### Option C: Spring Boot WAR or Container
+
+Tomcat automatically passes the following environment variables to all webapps:
+
+* `SPRING_DATASOURCE_URL=jdbc:mysql://local-db:3306/app_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC`
+* `SPRING_DATASOURCE_USERNAME=admin`
+* `SPRING_DATASOURCE_PASSWORD=admin123`
+
+---
+
+## ⚡ Local Dev Hub (Ports 3000–3999)
+
+The **Dev Hub** allows you to expose local development servers running on your host machine (Vite, Next.js, Create React App, Express, etc.) to your team, remote testers, or mobile devices over Tailscale HTTPS with **zero container restarts**.
+
+### 🌟 Key Capabilities
+
+- **Zero-Config Live Discovery**: The internal `dev-sse` runner continuously scans host ports `3000–3999` using low-latency TCP polling. When a dev server starts, it automatically scrapes its HTML `<title>` or `<meta name="application-name">` to display human-readable project cards with real-time status.
+- **Root-Level Cookie Routing (`/<port>` → `/`)**: Traditional subpath proxies (like `/port/3000/`) often break client-side routing (React Router, Next.js) and asset bundles. Dev Hub solves this seamlessly: navigating to `/<port>` (e.g. `https://<your-dev-domain>.ts.net/3000`) sets a session cookie `dev_port=3000` and immediately redirects to root `/`. Your project runs at root level with 100% path compatibility!
+- **Full WebSocket & HMR Support**: Out-of-the-box WebSocket proxying (`Upgrade: websocket`) ensures Vite Hot Module Reloading (HMR), Next.js Fast Refresh, and Socket.IO connections work smoothly across mobile phones and remote devices.
+- **Instant Project Switching & Reset**: Visit `https://<your-dev-domain>.ts.net/hub` at any time to switch active projects, or navigate to `/reset` to clear the active session cookie and return to the Dev Hub catalog.
+
+### 🚀 Usage Workflow
+
+1. **Start your host project:** Run your normal dev command on your machine (e.g., `npm run dev` or `yarn start` on port 3000, 3001, 5173, etc.).
+2. **Open the Dev Hub:** Navigate to `https://<your-dev-domain>.ts.net/hub` on your phone, tablet, or another workstation.
+3. **Connect to your project:** Click the project card or visit `https://<your-dev-domain>.ts.net/<port>` (e.g. `/3000`).
+4. **Switch or disconnect:** Navigate to `https://<your-dev-domain>.ts.net/reset` or `/hub` at any time.
+
+---
+
+## 📋 Pre-Setup Checklist
+
+Before running the automated setup script, ensure you have:
 
 ### 1. 🐳 Install & Start Docker Desktop
-- **Download**: [Docker Desktop](https://www.docker.com/products/docker-desktop/) for macOS, Windows, or Linux.
-- **Start**: Launch Docker Desktop and ensure the status indicates **"Engine running"**.
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
 
 ### 2. 🟢 Install Node.js (18 LTS, 20 LTS, or 22+)
-- **Required**: Node.js `>= 18.0.0` (Node 18 LTS, 20 LTS, or 22+). *Note: Node 14 & 16 are not supported due to missing modern filesystem APIs like `fs.cpSync`.*
-- **Download**: [Node.js Official Website](https://nodejs.org/)
-- **Using NVM** (recommended):
-  ```bash
-  nvm install 20 && nvm use 20
-  ```
-- **Verify**: Run `node -v` in your terminal to ensure version `>= 18.0.0`.
-- *(Optional)* Install Yarn globally if preferred: `npm install -g yarn`.
 
-### 3. 🔑 Obtain Tailscale Auth Key
-1. Go to the [Tailscale Admin Console → Settings → Keys](https://login.tailscale.com/admin/settings/keys).
-2. Click **Generate Auth Key**.
-3. Recommended settings:
-   - ✅ **Reusable**: Yes (so both `local-app` and `local-qa` containers can authenticate).
-   - ✅ **Ephemeral**: Optional (auto-cleans up inactive nodes from your tailnet).
-   - ✅ **Pre-authorized**: Yes (skips manual machine approval in admin dashboard).
-4. Copy your generated key (`tskey-auth-...`).
+- Required: Node.js `>= 18.0.0`.
+- Verify: `node -v`
 
-### 4. 📝 Configure `.env` File
-Create your `.env` configuration file from the template:
+### 3. 🔑 Tailscale Auth Key
 
-**macOS / Linux:**
-```bash
-cp .env.example .env
-```
-
-**Windows PowerShell:**
-```powershell
-Copy-Item .env.example .env
-```
-
-Open `.env` in your editor and paste your `TS_AUTHKEY`:
-```env
-TS_AUTHKEY=tskey-auth-kXXXXX-XXXXXXCNTRL
-```
+1. Go to [Tailscale Admin Console → Settings → Keys](https://login.tailscale.com/admin/settings/keys).
+2. Click **Generate Auth Key** with **Reusable: Yes** and **Pre-authorized: Yes**.
+3. Copy your key (`tskey-auth-...`).
 
 ---
 
 ## 💻 Automated Setup Guide
 
-Once the prerequisites above are completed, run the setup script for your platform:
-
 ### 🍏 For macOS / Linux
-
-Open your terminal and run:
 
 ```bash
 cd ~/Sites/docker-gateway
@@ -110,7 +167,7 @@ cd ~/Sites/docker-gateway
 # or: npm run setup
 ```
 
-Then reload your terminal profile:
+Reload your terminal profile:
 
 ```bash
 source ~/.zshrc    # or: source ~/.bashrc
@@ -118,18 +175,17 @@ source ~/.zshrc    # or: source ~/.bashrc
 
 ---
 
-### 🪟 For Windows (PowerShell / Command Prompt)
+### 🪟 For Windows (PowerShell)
 
-Open PowerShell as Administrator (or standard user) and run:
+Open PowerShell and run:
 
 ```powershell
 cd $env:USERPROFILE\Sites\docker-gateway
 .\setup.ps1
 # or: npm run setup
-# or double-click: setup.bat
 ```
 
-Then reload your PowerShell profile:
+Reload your PowerShell profile:
 
 ```powershell
 . $PROFILE
@@ -137,144 +193,73 @@ Then reload your PowerShell profile:
 
 ---
 
-### ⚙️ What the Setup Script Does Automatically:
-
-1. **Verifies Prerequisites**: Checks Docker, Docker daemon, Node.js (v18+), and Yarn/npm.
-2. **Generates `.env`**: Creates `.env` from `.env.example` if not already present.
-3. **Creates Directories**: Initializes `html/`, `webapps/`, and `projects/`.
-4. **Installs Global Terminal Shortcuts**:
-   - In macOS/Linux: Injects `dweb`, `dwar`, `dzip`, `dall`, `dstop`, `dstart`, `drm`, `d-up`, `d-down`, `d-ps`, `d-logs` into `~/.zshrc` / `~/.bashrc`.
-   - In Windows: Injects PowerShell helper functions into `$PROFILE`.
-5. **Starts All Containers**: Boots up the Tailscale Funnels, Nginx Gateway, and Tomcat stack.
-
----
-
-### 🔑 Environment Configuration (`.env`)
-
-Make sure your `.env` contains your active Tailscale Auth Key:
+## 🔑 Environment Configuration (`.env`)
 
 ```env
-# Tailscale Configuration (from Tailscale Admin Console -> Settings -> Keys)
+# Tailscale Configuration
 TS_AUTHKEY=tskey-auth-your-key-here
 TS_HOSTNAME_APP=my-app-gateway
 TS_HOSTNAME_QA=my-qa-tomcat
+TS_HOSTNAME_DEV=my-dev
+TS_HOSTNAME_DB=my-db
+TS_HOSTNAME_YTBOT=my-ytbot
 
 # Local Host Port Bindings
 PORT_APP=8080
 PORT_QA=8081
+PORT_YTBOT=8082
+PORT_DEV=8083
+PORT_MYSQL=3306
+PORT_PMA=8084
 
 # Tomcat Configuration
 TOMCAT_IMAGE=tomcat:9.0.16-jre11
-TOMCAT_ADMIN_USER=your_admin_user
+TOMCAT_ADMIN_USER=admin
 TOMCAT_ADMIN_PASSWORD=your_secure_password
 
 # Dashboard Login Credentials
 DASHBOARD_ADMIN_USER=admin
 DASHBOARD_ADMIN_PASSWORD=your_dashboard_password
+
+# YouTube Bot Configuration
+YTBOT_API_KEY=your_ytbot_api_key
+BOT_TOKEN=
+ALLOWED_IDS=*
+
+# MySQL Database & phpMyAdmin Configuration
+MYSQL_IMAGE=mysql:8.0
+MYSQL_ROOT_PASSWORD=your_root_password
+MYSQL_DATABASE=app_db
+MYSQL_USER=admin
+MYSQL_PASSWORD=your_db_password
+PMA_CONTROLUSER=pma
+PMA_CONTROLPASS=your_secure_pma_control_password
 ```
 
-Verify that all base containers are healthy:
+Verify all running containers:
 
 ```bash
 d-ps
 ```
 
-You should see:
-
-- `tailscale-app` (Tailscale Node for Web Gateway)
-- `gateway-nginx` (Nginx Gateway Router)
-- `tailscale-qa` (Tailscale Node for Tomcat QA)
-- `gateway-tomcat` (Apache Tomcat 9 Server)
-
 ---
 
-## 🚀 How to Deploy Projects
+## 🚀 Deployment Shortcuts
 
-### 🗜️ 1. Deploy ZIP Release (`dzip`) *(Recommended for Production)*
-
-Run `dzip` from inside any web repository:
-
-```bash
-cd /path/to/my-web-app
-dzip
-```
-
-**What happens automatically:**
-
-1. Compiles production assets and packages `<project>/release/${name}##V${version}.zip`.
-2. Extracts the ZIP into `projects/<project-name>/html/`.
-3. Creates or updates container `app-<project-name>`.
-4. Auto-syncs live dashboard in real time (`https://<your-app-domain>.ts.net/`).
-
----
-
-### 📦 2. Deploy Web Frontend (`dweb`)
-
-```bash
-cd /path/to/my-web-app
-dweb
-```
-
-Builds raw `dist/` or `build/` assets and deploys directly into container `app-<project-name>`.
-
----
-
-### ☕ 3. Deploy Java WAR (`dwar`)
-
-Run `dwar` from inside any Maven, Gradle, or WAR-based project:
-
-```bash
-cd /path/to/my-java-app
-dwar
-```
-
-**What happens automatically:**
-
-1. Builds Java WAR artifact (`release/*.war` or `target/*.war`).
-2. Cleans previous versions in `webapps/` and copies the new `.war`.
-3. Live immediately on Tomcat QA at `https://<your-qa-domain>.ts.net/<app>/`.
-
----
-
-### ⚡ 4. Deploy Both WAR & ZIP (`dall`)
-
-```bash
-cd /path/to/my-project
-dall
-```
-
-Runs **`dwar && dzip`** in sequence to build both the WAR archive (Tomcat) and ZIP release (Nginx Web Container).
-
----
-
-## 🎛️ Container & Project Management
-
-You can manage individual containers without touching `docker-compose`:
-
-| Command                                                | Action                                                                           | Example               |
-| :----------------------------------------------------- | :------------------------------------------------------------------------------- | :-------------------- |
-| **`dstop <project>`** / **`d-stop`**   | Stops the project container & marks it 🔴**Stopped** on the live dashboard | `dstop my-web-app`  |
-| **`dstart <project>`** / **`d-start`** | Starts the project container & restores status to 🟢**Live**               | `dstart my-web-app` |
-| **`drm <project>`** / **`d-rm`**       | Stops container, deletes project files, and removes card from dashboard          | `drm my-web-app`    |
-
-*(If you omit `<project>`, the commands automatically detect the project in your current working directory).*
-
----
-
-## 📊 Live Dashboard Features (`/`)
-
-The central dashboard (`https://<your-app-domain>.ts.net/`) includes:
-
-- **⚡ Real-Time Synchronization**: Polling every 3 seconds; updates when containers deploy, stop, or start without page reloads.
-- **🔍 Instant Search**: Filter applications across Web & Tomcat in real time as you type.
-- **🏷️ Category Filter Tabs**: Switch between `All`, `⚡ Web Frontend Containers`, and `☕ Tomcat Apps`.
-- **🟢 Live Status Dots**: Shows real-time container states (🟢 Online / 🔴 Stopped).
-- **🖥️ Responsive Adaptive Layout**:
-  - **PC / Desktop**: Direct top navigation bar with gateway shortcuts, dark/light theme switch, and user profile pill with logout.
-  - **Mobile / Tablet**: Clean compact header with slide-out sidebar drawer (`☰`) for touch devices.
-- **🌓 Appearance Controls**: Instant Dark & Light mode toggle with local storage persistence and system preference detection.
-- **🛡️ Secure Gateway Authentication**: Protected login overlay with seamless session persistence and zero-flash refresh.
-- **↗️ New-Tab Links**: Opens all apps in separate browser tabs.
+| Command                    | Action                      | Destination                                     |
+| :------------------------- | :-------------------------- | :---------------------------------------------- |
+| **`dzip`**         | Build & Deploy ZIP Release  | `https://<your-app-domain>.ts.net/<project>/` |
+| **`dweb`**         | Build & Deploy Web Frontend | `https://<your-app-domain>.ts.net/<project>/` |
+| **`dwar`**         | Build & Deploy Java WAR     | `https://<your-qa-domain>.ts.net/<app>/`      |
+| **`dall`**         | Deploy both WAR and ZIP     | Sequence: `dwar && dzip`                      |
+| **`dstop <app>`**  | Stop container              | Marks container 🔴 Stopped on dashboard         |
+| **`dstart <app>`** | Start container             | Restores container to 🟢 Online                 |
+| **`drm <app>`**    | Delete project & container  | Cleanly removes files and Docker container      |
+| **`d-up`**         | Start entire stack          | `docker compose up -d`                        |
+| **`d-down`**       | Stop entire stack           | `docker compose down`                         |
+| **`d-restart`**    | Restart entire stack        | `docker compose restart`                      |
+| **`d-logs`**       | Stream live logs            | `docker compose logs -f`                      |
+| **`d-ps`**         | View running containers     | `docker ps` with clean table format           |
 
 ---
 
@@ -282,60 +267,65 @@ The central dashboard (`https://<your-app-domain>.ts.net/`) includes:
 
 ```text
 docker-gateway/
-├── docker-compose.yml           # Central orchestration for Tailscale, Nginx, & Tomcat
-├── Dockerfile.tomcat            # Custom Tomcat 9 image with auto-configured manager
-├── entrypoint-tomcat.sh         # Configures Tomcat users, valves, and webapp templates
-├── nginx.conf                   # Gateway router with dynamic DNS resolver to project containers
-├── ts-serve-app.json            # Tailscale HTTPS Funnel config for local-app (:80)
-├── ts-serve-qa.json             # Tailscale HTTPS Funnel config for local-qa (:8080)
-├── .env                         # Local environment settings & secrets (ignored by Git)
-├── .env.example                 # Template environment file (committed to Git)
-├── .gitignore                   # Ignores .env, node_modules, and deployed builds
-├── package.json                 # NPM helper commands
-├── setup.sh                     # macOS / Linux automated setup script
-├── setup.ps1                    # Windows PowerShell automated setup script
-├── setup.bat                    # Windows batch setup launcher
-├── README.md                    # Stack documentation and setup guide
+├── docker-compose.yml           # Central multi-service stack orchestration
+├── Dockerfile.tomcat            # Custom Tomcat 9 image with MySQL driver & manager
+├── Dockerfile.dev-hub           # Lightweight Node.js SSE runner for Dev Hub
+├── entrypoint-tomcat.sh         # Dynamic Tomcat manager, MySQL JNDI, & context config
+├── nginx-main.conf              # Nginx master configuration loading NJS module
+├── nginx.conf                   # Main Web Gateway router with bot social previews
+├── nginx-dev.conf               # Dev Hub reverse-proxy for ports 3000–3010
+├── og_preview.js                # NGINX JavaScript (NJS) crawler bot preview generator
+├── ts-serve-app.json            # Tailscale HTTPS Funnel config for Web Gateway (:80)
+├── ts-serve-qa.json             # Tailscale HTTPS Funnel config for Tomcat QA (:8080)
+├── ts-serve-dev.json            # Tailscale HTTPS Funnel config for Dev Hub (:80)
+├── ts-serve-db.json             # Tailscale HTTPS Funnel config for phpMyAdmin (:80)
+├── ts-serve-ytbot.json          # Tailscale HTTPS Funnel config for YouTube Bot (:8080)
+├── .env                         # Local secrets & credentials (git-ignored)
+├── .env.example                 # Template configuration file
+├── .gitignore                   # Git ignore rules for builds, dumps, and media
+├── setup.sh                     # macOS / Linux automated installer
+├── setup.ps1                    # Windows PowerShell automated installer
+├── setup.bat                    # Windows batch launcher
+├── README.md                    # System documentation & reference
 │
-├── html/                        # Central Dashboard UI (https://<your-app-domain>.ts.net/)
-│   ├── index.html               # Real-time interactive dashboard application
-│   └── status.json              # Dynamic metadata API polled by the dashboard
+├── nginx-og-preview/            # Standalone package for production servers (No Docker required)
+│   ├── DEPLOY_MANUAL.txt        # Fast plain-text deployment manual for your team
+│   ├── architecture-flowchart.jpg # High-resolution architecture diagram
+│   ├── og_preview.js            # Standalone NJS preview generator module
+│   ├── og-preview.conf          # Nginx site configuration snippet
+│   ├── robots.txt               # Permissive robots.txt allowing Facebook & social bots
+│   ├── install.sh               # Automated 1-step installer for Debian/Ubuntu & RHEL/CentOS
+│   ├── test-bot.sh              # CLI tool simulating Facebook, Telegram, WhatsApp bots
+│   └── README.md                # Full documentation & configuration guide
+│
+├── html/                        # Central Web Dashboard (polled by local-app)
+│   ├── index.html               # Live reactive catalog application
+│   ├── robots.txt               # Search & social bot crawl rules
+│   └── status.json              # Real-time container metadata
+│
+├── html-dev/                    # Dev Hub Frontend & Live Port Inspector
+│   ├── index.html               # Real-time port discovery UI
+│   └── sse-server.js            # Server-Sent Events daemon for active port scanning
+│
+├── mysql-init/                  # MySQL entrypoint initialization scripts
+│   └── 01-phpmyadmin.sql        # Automated phpMyAdmin configuration storage schema
 │
 ├── projects/                    # Per-project isolated container storage & configs
-│   ├── <project-one>/
-│   │   ├── html/                # Production SPA build assets
-│   │   └── nginx.conf           # Project-specific SPA Nginx routing
-│   └── <project-two>/
-│       ├── html/
-│       └── nginx.conf
+│   └── <project-name>/html/     # Production SPA build assets
 │
-├── webapps/                     # Central volume for Tomcat WARs (e.g. <app-name>.war)
+├── webapps/                     # Tomcat QA deployment directory for .war files
+│
+├── ytbot/                       # Python YouTube Downloader & Telegram service
+│   ├── Dockerfile
+│   ├── bot.py
+│   └── downloads/               # Temporary media cache (git-ignored)
 │
 └── scripts/
-    ├── setup.cjs                # Cross-platform setup launcher
-    ├── dashboard-generator.cjs  # Shared real-time dashboard & status.json generator
-    ├── deploy-war.cjs           # Smart WAR build & deploy to Tomcat QA
-    ├── deploy-web.cjs           # Smart Web build & per-project container lifecycle
-    ├── deploy-zip.cjs           # Smart ZIP build & per-project container deploy
-    ├── manage-project.cjs       # Container stop / start / restart manager
-    └── remove-project.cjs       # Complete project & container remover
+    ├── clean-ds-store.sh        # Workspace .DS_Store cleaner script
+    ├── dashboard-generator.cjs  # Dynamic central dashboard generator
+    ├── deploy-war.cjs           # Smart Java WAR deployment script
+    ├── deploy-web.cjs           # Smart Web frontend deployment script
+    ├── deploy-zip.cjs           # Smart ZIP archive deployment script
+    ├── manage-project.cjs       # Container stop/start manager
+    └── remove-project.cjs       # Complete project remover
 ```
-
----
-
-## 🛠️ CLI Shortcut Reference
-
-| Task                                 | Command                          |
-| :----------------------------------- | :------------------------------- |
-| **Deploy ZIP Release**         | `dzip`                         |
-| **Deploy Web Frontend**        | `dweb`                         |
-| **Deploy Java WAR**            | `dwar`                         |
-| **Deploy Both (WAR + ZIP)**    | `dall`                         |
-| **Stop Project Container**     | `dstop <name>` or `d-stop`   |
-| **Start Project Container**    | `dstart <name>` or `d-start` |
-| **Remove Project & Container** | `drm <name>` or `d-rm`       |
-| **Start Global Stack**         | `d-up`                         |
-| **Stop Global Stack**          | `d-down`                       |
-| **Restart Global Stack**       | `d-restart`                    |
-| **View Running Containers**    | `d-ps`                         |
-| **View Live Stack Logs**       | `d-logs`                       |

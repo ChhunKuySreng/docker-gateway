@@ -78,8 +78,8 @@ if (-not (Test-Path $envFile)) {
 
 # 3. Create required folders
 Write-Host ""
-Write-Host "[3/5] Initializing workspace directories..." -ForegroundColor Cyan
-$folders = @("html", "webapps", "projects")
+Write-Host "[3/5] Initializing workspace directories & configs..." -ForegroundColor Cyan
+$folders = @("html", "webapps", "projects", "mysql-init", "html-dev", "ytbot\downloads")
 foreach ($folder in $folders) {
     $dirPath = Join-Path $ScriptDir $folder
     if (-not (Test-Path $dirPath)) {
@@ -90,7 +90,70 @@ foreach ($folder in $folders) {
         New-Item -ItemType File -Path $keepFile -Force | Out-Null
     }
 }
-Write-Host "  [+] html\, webapps\, and projects\ ready." -ForegroundColor Green
+
+# Ensure nginx-main.conf exists with NJS module loading enabled
+$nginxMainFile = Join-Path $ScriptDir "nginx-main.conf"
+if (-not (Test-Path $nginxMainFile)) {
+    $nginxMainContent = @"
+load_module modules/ngx_http_js_module.so;
+
+user  nginx;
+worker_processes  auto;
+
+error_log  /var/log/nginx/error.log notice;
+pid        /run/nginx.pid;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '`$remote_addr - `$remote_user [`$time_local] "`$request" '
+                      '`$status `$body_bytes_sent "`$http_referer" '
+                      '"`$http_user_agent" "`$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    keepalive_timeout  65;
+
+    include /etc/nginx/conf.d/*.conf;
+}
+"@
+    Set-Content -Path $nginxMainFile -Value $nginxMainContent -Encoding utf8
+    Write-Host "  [+] Created nginx-main.conf with NJS module enabled." -ForegroundColor Green
+}
+
+# Ensure html/robots.txt exists for search & social bots
+$robotsFile = Join-Path $ScriptDir "html\robots.txt"
+if (-not (Test-Path $robotsFile)) {
+    $robotsContent = @"
+User-agent: *
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: Facebot
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: TelegramBot
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+"@
+    Set-Content -Path $robotsFile -Value $robotsContent -Encoding utf8
+    Write-Host "  [+] Created html/robots.txt (allowing social media bots)." -ForegroundColor Green
+}
+
+Write-Host "  [+] Workspace directories & configurations initialized." -ForegroundColor Green
 
 # 4. Install PowerShell Profile Shortcuts
 Write-Host ""

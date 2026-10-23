@@ -11,7 +11,8 @@
     "logs": "docker compose logs -f",
     "deploy:war": "node scripts/deploy-war.cjs",
     "deploy:web": "node scripts/deploy-web.cjs",
-    "deploy:zip": "node scripts/deploy-zip.cjs"
+    "deploy:zip": "node scripts/deploy-zip.cjs",
+    "clean:ds": "bash ./scripts/clean-ds-store.sh"
   },
   "engines": {
     "node": ">=18.0.0"

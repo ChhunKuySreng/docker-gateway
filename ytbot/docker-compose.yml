@@ -1,0 +1,16 @@
+services:
+  ytbot:
+    build: .
+    restart: unless-stopped
+    environment:
+      - YTBOT_API_KEY=${YTBOT_API_KEY}
+      - API_KEY=${YTBOT_API_KEY}
+    volumes:
+      - ./downloads:/app/downloads
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://ytbot:8080
+    depends_on:
+      - ytbot

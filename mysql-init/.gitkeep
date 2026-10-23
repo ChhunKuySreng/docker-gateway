@@ -1,0 +1,2 @@
+# Place your .sql or .sh init scripts here
+# They will be automatically executed in alphabetical order when MySQL initializes for the first time.

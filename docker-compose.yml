@@ -27,7 +27,9 @@ services:
     restart: unless-stopped
     network_mode: service:tailscale-app
     volumes:
+      - ./nginx-main.conf:/etc/nginx/nginx.conf:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./og_preview.js:/etc/nginx/og_preview.js:ro
       - ./html:/usr/share/nginx/html:ro
     depends_on:
       - tailscale-app
@@ -65,11 +67,162 @@ services:
     environment:
       - TOMCAT_ADMIN_USER=${TOMCAT_ADMIN_USER}
       - TOMCAT_ADMIN_PASSWORD=${TOMCAT_ADMIN_PASSWORD}
+      - DB_HOST=local-db
+      - DB_PORT=3306
+      - DB_NAME=${MYSQL_DATABASE:-app_db}
+      - DB_USER=${MYSQL_USER:-admin}
+      - DB_PASSWORD=${MYSQL_PASSWORD:-admin123}
+      - SPRING_DATASOURCE_URL=jdbc:mysql://local-db:3306/${MYSQL_DATABASE:-app_db}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=${MYSQL_USER:-admin}
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_PASSWORD:-admin123}
     volumes:
       - ./webapps:/usr/local/tomcat/webapps
     depends_on:
       - tailscale-qa
+      - tailscale-db
+      - mysql
+
+  # =======================================================
+  # 3. YTBOT SERVICE (https://<your-ytbot-domain>.ts.net)
+  # =======================================================
+
+  tailscale-ytbot:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-ytbot
+    hostname: ${TS_HOSTNAME_YTBOT:-local-ytbot}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_HOSTNAME=${TS_HOSTNAME_YTBOT:-local-ytbot}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+      - TS_SERVE_CONFIG=/config/ts-serve-ytbot.json
+    volumes:
+      - ts-state-ytbot:/var/lib/tailscale
+      - ./ts-serve-ytbot.json:/config/ts-serve-ytbot.json:ro
+    ports:
+      - "${PORT_YTBOT:-8082}:8080"
+    restart: unless-stopped
+ 
+  ytbot:
+    build: ./ytbot
+    container_name: ytbot
+    restart: unless-stopped
+    network_mode: service:tailscale-ytbot
+    environment:
+      - YTBOT_API_KEY=${YTBOT_API_KEY}
+      - API_KEY=${YTBOT_API_KEY}
+      - BOT_TOKEN=${BOT_TOKEN:-}
+      - ALLOWED_IDS=${ALLOWED_IDS:-}
+      - MAX_PARALLEL=${MAX_PARALLEL:-2}
+      - RUN_SERVER=${RUN_SERVER:-true}
+    volumes:
+      - ./ytbot:/app
+      - ./ytbot/downloads:/app/downloads
+    depends_on:
+      - tailscale-ytbot
+
+  # =======================================================
+  # 4. LOCAL DEV PORTS 3000-3010 (https://<your-dev-domain>.ts.net)
+  # =======================================================
+  tailscale-dev:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-dev
+    hostname: ${TS_HOSTNAME_DEV:-local-dev}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_HOSTNAME=${TS_HOSTNAME_DEV:-local-dev}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+      - TS_SERVE_CONFIG=/config/ts-serve-dev.json
+    volumes:
+      - ts-state-dev:/var/lib/tailscale
+      - ./ts-serve-dev.json:/config/ts-serve-dev.json:ro
+    ports:
+      - "${PORT_DEV:-8083}:80"
+    restart: unless-stopped
+
+  gateway-dev:
+    image: nginx:alpine
+    container_name: gateway-dev
+    restart: unless-stopped
+    network_mode: service:tailscale-dev
+    volumes:
+      - ./nginx-dev.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./html-dev:/usr/share/nginx/html:ro
+    depends_on:
+      - tailscale-dev
+
+  dev-sse:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev-hub
+    image: dev-hub-sse
+    container_name: dev-sse
+    restart: unless-stopped
+    network_mode: service:tailscale-dev
+    volumes:
+      - ./html-dev:/app
+    depends_on:
+      - tailscale-dev
+
+  # =======================================================
+  # 5. DATABASE SERVICE (MySQL & phpMyAdmin)
+  # =======================================================
+  tailscale-db:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-db
+    hostname: ${TS_HOSTNAME_DB:-local-db}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_HOSTNAME=${TS_HOSTNAME_DB:-local-db}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+      - TS_SERVE_CONFIG=/config/ts-serve-db.json
+    volumes:
+      - ts-state-db:/var/lib/tailscale
+      - ./ts-serve-db.json:/config/ts-serve-db.json:ro
+    ports:
+      - "${PORT_MYSQL:-3306}:3306"
+      - "${PORT_PMA:-8084}:80"
+    restart: unless-stopped
+
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:8.0}
+    container_name: gateway-mysql
+    restart: unless-stopped
+    network_mode: service:tailscale-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-app_db}
+      - MYSQL_USER=${MYSQL_USER:-admin}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-admin123}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    depends_on:
+      - tailscale-db
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: gateway-phpmyadmin
+    restart: unless-stopped
+    network_mode: service:tailscale-db
+    environment:
+      - PMA_HOST=127.0.0.1
+      - PMA_PORT=3306
+      - PMA_PMADB=phpmyadmin
+      - PMA_CONTROLUSER=${PMA_CONTROLUSER:-pma}
+      - PMA_CONTROLPASS=${PMA_CONTROLPASS}
+      - UPLOAD_LIMIT=300M
+      - MEMORY_LIMIT=512M
+    depends_on:
+      - tailscale-db
+      - mysql
 
 volumes:
   ts-state:
   ts-state-qa:
+  ts-state-ytbot:
+  ts-state-dev:
+  ts-state-db:
+  mysql-data:

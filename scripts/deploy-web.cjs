@@ -241,6 +241,56 @@ if (path.resolve(sourceDir || "") !== path.resolve(targetHtmlDir)) {
   }
 }
 
+// Adapt local container html for gateway routing (keeps release .zip clean for real server)
+try {
+  const indexHtmlPath = path.join(targetHtmlDir, "index.html");
+  if (fs.existsSync(indexHtmlPath)) {
+    let indexHtml = fs.readFileSync(indexHtmlPath, "utf8");
+    const prefixRegex = new RegExp(`(src|href)=["']\\/(?!\\/|${contextName}\\/)`, "g");
+    indexHtml = indexHtml.replace(prefixRegex, `$1="/${contextName}/`);
+    fs.writeFileSync(indexHtmlPath, indexHtml, "utf8");
+  }
+
+  // Adjust router basename and toAbsoluteUrl base in JS chunks for local container subpath reverse proxy
+  const getAllJsFiles = (dir) => {
+    let results = [];
+    if (!fs.existsSync(dir)) return results;
+    for (const f of fs.readdirSync(dir)) {
+      const full = path.join(dir, f);
+      try {
+        if (fs.statSync(full).isDirectory()) {
+          results = results.concat(getAllJsFiles(full));
+        } else if (f.endsWith(".js")) {
+          results.push(full);
+        }
+      } catch (e) {}
+    }
+    return results;
+  };
+
+  const jsFiles = getAllJsFiles(targetHtmlDir);
+  for (const fullJsPath of jsFiles) {
+    let content = fs.readFileSync(fullJsPath, "utf8");
+    let changed = false;
+
+    // Adjust router basename (supports single/double quotes, spaced or minified)
+    if (content.includes('basename:"/"') || content.includes('basename: "/"') || content.includes("basename:'/'") || content.includes("basename: '/'")) {
+      content = content.replace(/basename:\s*["']\/["']/g, `basename:"/${contextName}/"`);
+      changed = true;
+    }
+
+    // Adjust toAbsoluteUrl base (e.g. let t="/";return t.endsWith("/"))
+    if (content.includes('let t="/";return t.endsWith("/")')) {
+      content = content.replace('let t="/";return t.endsWith("/")', `let t="/${contextName}/";return t.endsWith("/")`);
+      changed = true;
+    }
+
+    if (changed) {
+      fs.writeFileSync(fullJsPath, content, "utf8");
+    }
+  }
+} catch (e) {}
+
 // 3. Write internal project nginx.conf and meta.json
 const projectNginxConf = `server {
     listen 80;

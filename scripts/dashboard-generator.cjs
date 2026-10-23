@@ -87,6 +87,8 @@ function updateGlobalDashboard() {
 
     const appDomain = getTailscaleDomain("tailscale-app", "local-app");
     const qaDomain = getTailscaleDomain("tailscale-qa", "local-qa");
+    const dbDomain = getTailscaleDomain("tailscale-db", "local-db");
+    const pmaUrl = dbDomain;
     const runningContainers = getRunningContainers();
     const isTomcatRunning = runningContainers.has("gateway-tomcat") || runningContainers.has("global-tomcat");
     const tomcatContainerName = runningContainers.has("gateway-tomcat") ? "gateway-tomcat" : "global-tomcat";
@@ -105,11 +107,13 @@ function updateGlobalDashboard() {
         const isRunning = runningContainers.has(cName);
 
         let version = "1.0.0";
+        let deployedAt = pStat.mtime.toISOString();
         const metaFile = path.join(pDir, "meta.json");
         if (fs.existsSync(metaFile)) {
           try {
             const meta = JSON.parse(fs.readFileSync(metaFile, "utf8"));
             if (meta.version) version = meta.version;
+            if (meta.deployedAt) deployedAt = meta.deployedAt;
           } catch (e) {}
         }
 
@@ -125,13 +129,14 @@ function updateGlobalDashboard() {
           status: isRunning ? "online" : "offline",
           badge: isRunning ? "Web Container" : "Container Stopped",
           icon: "⚡",
-          updatedAt: pStat.mtime.toISOString(),
+          deployedAt: deployedAt,
+          updatedAt: deployedAt,
         });
       }
     }
 
     // 2. Discover Tomcat Webapps
-    const systemTomcatApps = new Set(["ROOT", "docs", "examples", "host-manager"]);
+    const systemTomcatApps = new Set(["ROOT", "docs", "examples", "host-manager", "manager"]);
     const tomcatApps = [];
     if (fs.existsSync(globalWebappsDir)) {
       const items = fs.readdirSync(globalWebappsDir);
@@ -139,7 +144,6 @@ function updateGlobalDashboard() {
         .filter((item) => {
           if (systemTomcatApps.has(item)) return false;
           if (
-            item === "manager" ||
             item.endsWith(".war") ||
             fs.statSync(path.join(globalWebappsDir, item)).isDirectory()
           ) {
@@ -151,18 +155,20 @@ function updateGlobalDashboard() {
         .filter((v, i, a) => a.indexOf(v) === i && !systemTomcatApps.has(v));
 
       for (const app of uniqueApps) {
-        const isManager = app === "manager";
-        const appPath = isManager ? "manager/html" : `${app}/`;
-        const appTitle = isManager ? "Tomcat Web Manager" : app;
-        const icon = isManager ? "⚙️" : "☕";
-        const badge = isManager ? "System Tool" : "Tomcat WAR";
+        const isManager = false;
+        const appPath = `${app}/`;
+        const appTitle = app;
+        const icon = "☕";
+        const badge = "Tomcat WAR";
 
         let version = isManager ? "9.0" : "1.0.0";
+        let deployedAt = null;
         const metaFile = path.join(globalWebappsDir, `${app}.meta.json`);
         if (fs.existsSync(metaFile)) {
           try {
             const meta = JSON.parse(fs.readFileSync(metaFile, "utf8"));
             if (meta.version) version = meta.version;
+            if (meta.deployedAt) deployedAt = meta.deployedAt;
           } catch (e) {}
         }
 
@@ -177,6 +183,8 @@ function updateGlobalDashboard() {
           }
         } catch (e) {}
 
+        if (!deployedAt) deployedAt = mtime;
+
         tomcatApps.push({
           id: app,
           name: appTitle,
@@ -190,7 +198,8 @@ function updateGlobalDashboard() {
           badge: isTomcatRunning ? badge : "Tomcat Offline",
           icon: icon,
           isManager: isManager,
-          updatedAt: mtime,
+          deployedAt: deployedAt,
+          updatedAt: deployedAt,
         });
       }
     }
@@ -199,6 +208,7 @@ function updateGlobalDashboard() {
     const statusData = {
       appDomain,
       qaDomain,
+      dbDomain,
       lastUpdated: new Date().toISOString(),
       counts: {
         web: webProjects.length,
@@ -518,6 +528,16 @@ function updateGlobalDashboard() {
       color: var(--amber);
       border: 1px solid var(--amber-border);
     }
+    .chip-manager {
+      background: var(--purple-bg);
+      color: var(--purple);
+      border: 1px solid var(--purple-border);
+    }
+    .chip-db {
+      background: var(--emerald-bg);
+      color: var(--emerald);
+      border: 1px solid var(--emerald-border);
+    }
     .gateway-chip:hover {
       transform: translateY(-1px);
       box-shadow: 0 4px 12px var(--shadow-color);
@@ -812,6 +832,103 @@ function updateGlobalDashboard() {
       border: 1px solid rgba(244, 63, 94, 0.25);
     }
 
+    .badge-latest {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.55rem;
+      border-radius: 9999px;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(239, 68, 68, 0.2));
+      color: #f59e0b;
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.22);
+      animation: pulseLatest 2.5s ease-in-out infinite;
+      white-space: nowrap;
+      letter-spacing: 0.02em;
+    }
+    [data-theme="light"] .badge-latest {
+      background: linear-gradient(135deg, rgba(217, 119, 6, 0.15), rgba(225, 29, 72, 0.12));
+      color: #b45309;
+      border: 1px solid rgba(217, 119, 6, 0.35);
+      box-shadow: 0 0 8px rgba(217, 119, 6, 0.15);
+    }
+    @keyframes pulseLatest {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 6px rgba(245, 158, 11, 0.2);
+      }
+      50% {
+        transform: scale(1.03);
+        box-shadow: 0 0 12px rgba(245, 158, 11, 0.45);
+      }
+    }
+    .card-is-latest {
+      border-color: rgba(245, 158, 11, 0.45) !important;
+      box-shadow: 0 6px 20px -2px rgba(245, 158, 11, 0.2) !important;
+    }
+    .card-is-latest .card-glow-bar {
+      opacity: 0.9 !important;
+      background: linear-gradient(90deg, #f59e0b, #ef4444, transparent) !important;
+    }
+
+    .card-deploy-info {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      padding: 0.4rem 0.65rem;
+      border-radius: 0.55rem;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 0.73rem;
+      color: var(--text-sub);
+    }
+    [data-theme="light"] .card-deploy-info {
+      background: rgba(15, 23, 42, 0.035);
+      border-color: rgba(15, 23, 42, 0.07);
+    }
+    .deploy-meta-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .deploy-icon {
+      font-size: 0.82rem;
+      flex-shrink: 0;
+      opacity: 0.9;
+    }
+    .deploy-date-val {
+      font-family: var(--font-mono);
+      font-weight: 500;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 0.72rem;
+    }
+    .deploy-relative-tag {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 0.12rem 0.45rem;
+      border-radius: 9999px;
+      background: var(--surface-elevated);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .card-is-latest .deploy-relative-tag {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--amber);
+      border-color: rgba(245, 158, 11, 0.35);
+    }
+
     .status-dot {
       width: 6px;
       height: 6px;
@@ -883,20 +1000,93 @@ function updateGlobalDashboard() {
       border-top: 1px solid var(--border);
       font-family: var(--font-mono);
     }
-    .container-tag {
+    .container-tag.btn-copy-tag {
       display: inline-flex;
       align-items: center;
       gap: 0.35rem;
       font-size: 0.74rem;
       color: var(--text-sub);
-      max-width: 70%;
+      max-width: 55%;
       overflow: hidden;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.45rem;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+    [data-theme="light"] .container-tag.btn-copy-tag {
+      background: rgba(15, 23, 42, 0.03);
+      border-color: rgba(15, 23, 42, 0.08);
+    }
+    .container-tag.btn-copy-tag:hover {
+      background: var(--surface-elevated);
+      border-color: var(--cyan);
+      color: var(--text-main);
+      transform: translateY(-1px);
+    }
+    .tomcat-card .container-tag.btn-copy-tag:hover {
+      border-color: var(--amber);
+    }
+    .copy-mini-icon {
+      font-size: 0.7rem;
+      opacity: 0.6;
+      transition: opacity 0.2s ease;
+      flex-shrink: 0;
+    }
+    .container-tag.btn-copy-tag:hover .copy-mini-icon {
+      opacity: 1;
     }
     .container-name {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+
+    .card-actions-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      flex-shrink: 0;
+    }
+
+    .btn-card-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.25rem 0.55rem;
+      border-radius: 0.45rem;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      color: var(--text-sub);
+      font-size: 0.74rem;
+      font-weight: 600;
+      font-family: var(--font-main);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+    .btn-card-action:hover {
+      background: var(--input-bg);
+      color: var(--cyan);
+      border-color: var(--cyan-border);
+      transform: translateY(-1px);
+    }
+    .tomcat-card .btn-card-action:hover {
+      color: var(--amber);
+      border-color: var(--amber-border);
+    }
+
+    .btn-card-action.copied-success,
+    .container-tag.btn-copy-tag.copied-success {
+      background: var(--emerald-bg) !important;
+      color: var(--emerald) !important;
+      border-color: var(--emerald-border) !important;
+    }
+
     .card-launch {
       display: inline-flex;
       align-items: center;
@@ -1808,19 +1998,35 @@ function updateGlobalDashboard() {
       <div class="sidebar-section">
         <div class="sidebar-section-title">Gateways & Tooling</div>
         <div class="sidebar-links-list">
-          <a href="${appDomain}" target="_blank" rel="noopener noreferrer" class="sidebar-link-item chip-app">
+          <a href="${appDomain}" target="_blank" rel="noopener noreferrer" class="sidebar-link-item chip-app" id="sidebar-chip-app">
             <div class="sidebar-link-icon">🌐</div>
             <div class="sidebar-link-info">
               <span class="sidebar-link-title">Web Frontend Gateway</span>
-              <span class="sidebar-link-sub">${appDomain}</span>
+              <span class="sidebar-link-sub" id="text-app-domain">${appDomain}</span>
             </div>
             <span class="sidebar-link-arrow">↗</span>
           </a>
-          <a href="${qaDomain}" target="_blank" rel="noopener noreferrer" class="sidebar-link-item chip-qa">
+          <a href="${qaDomain}" target="_blank" rel="noopener noreferrer" class="sidebar-link-item chip-qa" id="sidebar-chip-qa">
             <div class="sidebar-link-icon">☕</div>
             <div class="sidebar-link-info">
               <span class="sidebar-link-title">Tomcat QA Gateway</span>
-              <span class="sidebar-link-sub">${qaDomain}</span>
+              <span class="sidebar-link-sub" id="text-qa-domain">${qaDomain}</span>
+            </div>
+            <span class="sidebar-link-arrow">↗</span>
+          </a>
+          <a href="${qaDomain}/manager/html" target="_blank" rel="noopener noreferrer" class="sidebar-link-item chip-manager" id="sidebar-chip-manager">
+            <div class="sidebar-link-icon">⚙️</div>
+            <div class="sidebar-link-info">
+              <span class="sidebar-link-title">Tomcat Web Manager</span>
+              <span class="sidebar-link-sub" id="text-manager-domain">${qaDomain}/manager/html</span>
+            </div>
+            <span class="sidebar-link-arrow">↗</span>
+          </a>
+          <a href="${pmaUrl}" target="_blank" rel="noopener noreferrer" class="sidebar-link-item chip-db" id="sidebar-chip-db">
+            <div class="sidebar-link-icon">🐬</div>
+            <div class="sidebar-link-info">
+              <span class="sidebar-link-title">phpMyAdmin &amp; MySQL</span>
+              <span class="sidebar-link-sub" id="text-db-domain">${pmaUrl}</span>
             </div>
             <span class="sidebar-link-arrow">↗</span>
           </a>
@@ -1902,14 +2108,24 @@ function updateGlobalDashboard() {
           <div class="navbar-actions">
             <!-- Direct Gateway Links -->
             <div class="gateways-bar">
-              <a href="${appDomain}" target="_blank" rel="noopener noreferrer" class="gateway-chip chip-app">
+              <a href="${appDomain}" target="_blank" rel="noopener noreferrer" class="gateway-chip chip-app" id="chip-app">
                 <span>🌐</span>
                 <span>Web Gateway</span>
                 <span>↗</span>
               </a>
-              <a href="${qaDomain}" target="_blank" rel="noopener noreferrer" class="gateway-chip chip-qa">
+              <a href="${qaDomain}" target="_blank" rel="noopener noreferrer" class="gateway-chip chip-qa" id="chip-qa">
                 <span>☕</span>
                 <span>Tomcat QA</span>
+                <span>↗</span>
+              </a>
+              <a href="${qaDomain}/manager/html" target="_blank" rel="noopener noreferrer" class="gateway-chip chip-manager" id="chip-manager" title="Tomcat Web Application Manager">
+                <span>⚙️</span>
+                <span>Tomcat Manager</span>
+                <span>↗</span>
+              </a>
+              <a href="${pmaUrl}" target="_blank" rel="noopener noreferrer" class="gateway-chip chip-db" id="chip-db" title="phpMyAdmin &amp; MySQL Database">
+                <span>🐬</span>
+                <span>phpMyAdmin</span>
                 <span>↗</span>
               </a>
             </div>
@@ -2047,6 +2263,7 @@ function updateGlobalDashboard() {
     let state = {
       appDomain: "${appDomain}",
       qaDomain: "${qaDomain}",
+      dbDomain: "${dbDomain}",
       webProjects: ${JSON.stringify(webProjects)},
       tomcatApps: ${JSON.stringify(tomcatApps)},
       filter: "all",
@@ -2070,8 +2287,118 @@ function updateGlobalDashboard() {
     }
     window.setFilter = setFilter;
 
+    function formatDeployDate(dateStr) {
+      if (!dateStr) return { formatted: "Unknown", relative: "N/A" };
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return { formatted: "Unknown", relative: "N/A" };
+
+      const formatted = d.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }) + " " + d.toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+
+      const now = Date.now();
+      const diffMs = Math.max(0, now - d.getTime());
+      const diffSec = Math.floor(diffMs / 1000);
+      const diffMin = Math.floor(diffSec / 60);
+      const diffHour = Math.floor(diffMin / 60);
+      const diffDay = Math.floor(diffHour / 24);
+
+      let relative = "Just now";
+      if (diffSec < 10) {
+        relative = "Just now";
+      } else if (diffSec < 60) {
+        relative = diffSec + "s ago";
+      } else if (diffMin < 60) {
+        relative = diffMin + "m ago";
+      } else if (diffHour < 24) {
+        relative = diffHour + "h ago";
+      } else if (diffDay === 1) {
+        relative = "Yesterday";
+      } else if (diffDay < 30) {
+        relative = diffDay + "d ago";
+      } else {
+        relative = Math.floor(diffDay / 30) + "mo ago";
+      }
+
+      return { formatted, relative };
+    }
+
+    function updateRealtimeTimes() {
+      document.querySelectorAll(".deploy-relative-tag[data-time]").forEach((el) => {
+        const timeStr = el.getAttribute("data-time");
+        if (timeStr) {
+          const info = formatDeployDate(timeStr);
+          el.textContent = info.relative;
+        }
+      });
+    }
+
+    function handleCopy(event, textToCopy, btnEl) {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      if (!textToCopy) return;
+
+      const performFeedback = () => {
+        if (!btnEl) return;
+        btnEl.classList.add("copied-success");
+        const origHtml = btnEl.innerHTML;
+        const isTag = btnEl.classList.contains("btn-copy-tag");
+        
+        if (isTag) {
+          btnEl.innerHTML = '<span>✓</span><span class="container-name">Copied!</span>';
+        } else {
+          btnEl.innerHTML = '<span class="btn-action-icon">✓</span><span class="btn-action-text">Copied!</span>';
+        }
+        
+        setTimeout(() => {
+          btnEl.classList.remove("copied-success");
+          btnEl.innerHTML = origHtml;
+        }, 1500);
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textToCopy).then(performFeedback).catch(() => {
+          fallbackCopy(textToCopy, performFeedback);
+        });
+      } else {
+        fallbackCopy(textToCopy, performFeedback);
+      }
+    }
+
+    function fallbackCopy(text, cb) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+        if (cb) cb();
+      } catch (e) {
+        console.warn("Copy failed:", e);
+      }
+      document.body.removeChild(ta);
+    }
+    window.handleCopy = handleCopy;
+
     function renderCards() {
       const q = state.search.toLowerCase().trim();
+
+      // Find latest deployment across all projects
+      const allProjects = [...state.webProjects, ...state.tomcatApps];
+      const maxDeployTime = allProjects.reduce((max, p) => {
+        const t = new Date(p.deployedAt || p.updatedAt || 0).getTime();
+        return !isNaN(t) && t > max ? t : max;
+      }, 0);
 
       // Filter Web
       const filteredWeb = state.webProjects.filter((p) => {
@@ -2110,9 +2437,14 @@ function updateGlobalDashboard() {
           ? filteredWeb
               .map((p) => {
                 const isOnline = p.isRunning !== false;
-                const cardClass = isOnline ? "card web-card" : "card web-card card-offline";
+                const deployTime = new Date(p.deployedAt || p.updatedAt || 0).getTime();
+                const isLatest = maxDeployTime > 0 && deployTime === maxDeployTime;
+                const cardClass = ("card web-card " + (isOnline ? "" : "card-offline ") + (isLatest ? "card-is-latest" : "")).trim();
                 const dotClass = isOnline ? "status-dot" : "status-dot dot-error";
                 const versionTag = p.version ? \`<span class="version-pill">v\${p.version}</span>\` : "";
+                const latestBadge = isLatest ? \`<span class="badge-latest">✨ Latest Deploy</span>\` : "";
+                const timeInfo = formatDeployDate(p.deployedAt || p.updatedAt);
+                const fullLink = p.fullUrl || (state.appDomain + p.url);
 
                 return \`
               <a href="\${p.url}" target="_blank" rel="noopener noreferrer" class="\${cardClass}" id="card-\${p.id}">
@@ -2122,6 +2454,7 @@ function updateGlobalDashboard() {
                     <span class="card-icon">\${p.icon}</span>
                   </div>
                   <div class="badges-group">
+                    \${latestBadge}
                     \${versionTag}
                     <span class="card-status-badge \${isOnline ? "badge-online" : "badge-offline"}">
                       <span class="\${dotClass}"></span>
@@ -2131,18 +2464,29 @@ function updateGlobalDashboard() {
                 </div>
                 <div class="card-content">
                   <div class="card-title">\${p.name}</div>
-                  <div class="card-route">
-                    <code>\${p.url}</code>
+                  <div class="card-deploy-info" title="Deployed: \${timeInfo.formatted}">
+                    <div class="deploy-meta-left">
+                      <span class="deploy-icon">🕒</span>
+                      <span class="deploy-date-val">\${timeInfo.formatted}</span>
+                    </div>
+                    <span class="deploy-relative-tag" data-time="\${p.deployedAt || p.updatedAt}">\${timeInfo.relative}</span>
                   </div>
                 </div>
                 <div class="card-footer">
-                  <div class="container-tag">
+                  <button type="button" class="container-tag btn-copy-tag" onclick="handleCopy(event, '\${p.containerName}', this)" title="Click to copy container name">
                     <span>🐳</span>
                     <span class="container-name">\${p.containerName}</span>
-                  </div>
-                  <div class="card-launch">
-                    <span>Launch</span>
-                    <span class="open-icon">↗</span>
+                    <span class="copy-mini-icon">📋</span>
+                  </button>
+                  <div class="card-actions-group">
+                    <button type="button" class="btn-card-action btn-copy-link" onclick="handleCopy(event, '\${fullLink}', this)" title="Copy application URL link">
+                      <span class="btn-action-icon">🔗</span>
+                      <span class="btn-action-text">Copy Link</span>
+                    </button>
+                    <div class="card-launch">
+                      <span>Launch</span>
+                      <span class="open-icon">↗</span>
+                    </div>
                   </div>
                 </div>
               </a>\`;
@@ -2156,9 +2500,14 @@ function updateGlobalDashboard() {
           ? filteredTomcat
               .map((p) => {
                 const isOnline = p.isRunning !== false;
-                const cardClass = isOnline ? "card tomcat-card" : "card tomcat-card card-offline";
+                const deployTime = new Date(p.deployedAt || p.updatedAt || 0).getTime();
+                const isLatest = maxDeployTime > 0 && deployTime === maxDeployTime;
+                const cardClass = ("card tomcat-card " + (isOnline ? "" : "card-offline ") + (isLatest ? "card-is-latest" : "")).trim();
                 const dotClass = isOnline ? "status-dot dot-warn" : "status-dot dot-error";
                 const versionTag = p.version ? \`<span class="version-pill">v\${p.version}</span>\` : "";
+                const latestBadge = isLatest ? \`<span class="badge-latest">✨ Latest Deploy</span>\` : "";
+                const timeInfo = formatDeployDate(p.deployedAt || p.updatedAt);
+                const fullLink = p.fullUrl || (state.qaDomain + p.url);
 
                 return \`
               <a href="\${p.url}" target="_blank" rel="noopener noreferrer" class="\${cardClass}" id="card-\${p.id}">
@@ -2168,6 +2517,7 @@ function updateGlobalDashboard() {
                     <span class="card-icon">\${p.icon}</span>
                   </div>
                   <div class="badges-group">
+                    \${latestBadge}
                     \${versionTag}
                     <span class="card-status-badge \${isOnline ? "badge-online" : "badge-offline"}">
                       <span class="\${dotClass}"></span>
@@ -2177,18 +2527,29 @@ function updateGlobalDashboard() {
                 </div>
                 <div class="card-content">
                   <div class="card-title">\${p.name}</div>
-                  <div class="card-route">
-                    <code>\${p.url}</code>
+                  <div class="card-deploy-info" title="Deployed: \${timeInfo.formatted}">
+                    <div class="deploy-meta-left">
+                      <span class="deploy-icon">🕒</span>
+                      <span class="deploy-date-val">\${timeInfo.formatted}</span>
+                    </div>
+                    <span class="deploy-relative-tag" data-time="\${p.deployedAt || p.updatedAt}">\${timeInfo.relative}</span>
                   </div>
                 </div>
                 <div class="card-footer">
-                  <div class="container-tag">
+                  <button type="button" class="container-tag btn-copy-tag" onclick="handleCopy(event, '\${p.containerName}', this)" title="Click to copy container name">
                     <span>☕</span>
                     <span class="container-name">\${p.containerName}</span>
-                  </div>
-                  <div class="card-launch">
-                    <span>Launch</span>
-                    <span class="open-icon">↗</span>
+                    <span class="copy-mini-icon">📋</span>
+                  </button>
+                  <div class="card-actions-group">
+                    <button type="button" class="btn-card-action btn-copy-link" onclick="handleCopy(event, '\${fullLink}', this)" title="Copy application URL link">
+                      <span class="btn-action-icon">🔗</span>
+                      <span class="btn-action-text">Copy Link</span>
+                    </button>
+                    <div class="card-launch">
+                      <span>Launch</span>
+                      <span class="open-icon">↗</span>
+                    </div>
                   </div>
                 </div>
               </a>\`;
@@ -2233,11 +2594,27 @@ function updateGlobalDashboard() {
             const qaDomEl = document.getElementById("text-qa-domain");
             const chipApp = document.getElementById("chip-app");
             const chipQa = document.getElementById("chip-qa");
+            const chipManager = document.getElementById("chip-manager");
+            const chipDb = document.getElementById("chip-db");
+            const sidebarChipApp = document.getElementById("sidebar-chip-app");
+            const sidebarChipQa = document.getElementById("sidebar-chip-qa");
+            const sidebarChipManager = document.getElementById("sidebar-chip-manager");
+            const sidebarChipDb = document.getElementById("sidebar-chip-db");
+            const textManagerDomain = document.getElementById("text-manager-domain");
+            const textDbDomain = document.getElementById("text-db-domain");
 
             if (appDomEl) appDomEl.textContent = state.appDomain;
             if (qaDomEl) qaDomEl.textContent = state.qaDomain;
             if (chipApp) chipApp.href = state.appDomain;
             if (chipQa) chipQa.href = state.qaDomain;
+            if (chipManager) chipManager.href = state.qaDomain + "/manager/html";
+            if (chipDb) chipDb.href = state.dbDomain;
+            if (sidebarChipApp) sidebarChipApp.href = state.appDomain;
+            if (sidebarChipQa) sidebarChipQa.href = state.qaDomain;
+            if (sidebarChipManager) sidebarChipManager.href = state.qaDomain + "/manager/html";
+            if (sidebarChipDb) sidebarChipDb.href = state.dbDomain;
+            if (textManagerDomain) textManagerDomain.textContent = state.qaDomain + "/manager/html";
+            if (textDbDomain) textDbDomain.textContent = state.dbDomain;
             
             const displayTime = data.lastUpdated ? new Date(data.lastUpdated).toLocaleTimeString() : new Date().toLocaleTimeString();
             const timeEl = document.getElementById("last-synced-time");
@@ -2281,9 +2658,10 @@ function updateGlobalDashboard() {
       });
     }
 
-    // Initial render & silent background check every 5 seconds
+    // Initial render & silent background sync every 3s + realtime ticker every 1s
     renderCards();
-    setInterval(() => fetchStatus(false), 5000);
+    setInterval(updateRealtimeTimes, 1000);
+    setInterval(() => fetchStatus(false), 3000);
     window.addEventListener("focus", () => fetchStatus(false));
   </script>
 </body>

@@ -64,8 +64,32 @@ const getDockerNetwork = () => {
   return `${path.basename(globalDir)}_default`;
 };
 
-const extractZip = (srcZip, destDir) => {
+const getAdmZip = (projectDir) => {
+  try {
+    return require("adm-zip");
+  } catch (e) {}
+  if (projectDir) {
+    try {
+      const projectAdmZip = path.join(projectDir, "node_modules", "adm-zip");
+      if (fs.existsSync(projectAdmZip)) {
+        return require(projectAdmZip);
+      }
+    } catch (e) {}
+  }
+  return null;
+};
+
+const extractZip = (srcZip, destDir, projectDir) => {
   fs.mkdirSync(destDir, { recursive: true });
+  const AdmZip = getAdmZip(projectDir || path.dirname(srcZip));
+  if (AdmZip) {
+    try {
+      const zip = new AdmZip(srcZip);
+      zip.extractAllTo(destDir, true);
+      return;
+    } catch (e) {}
+  }
+
   if (isWin) {
     execSync(
       `powershell -Command "Expand-Archive -Path '${srcZip}' -DestinationPath '${destDir}' -Force"`,
@@ -81,13 +105,21 @@ const extractZip = (srcZip, destDir) => {
   }
 };
 
-const createZipArchive = (sourceDir, outputZipPath) => {
+const createZipArchive = (sourceDir, outputZipPath, projectDir) => {
   const zipDir = path.dirname(outputZipPath);
   if (!fs.existsSync(zipDir)) {
     fs.mkdirSync(zipDir, { recursive: true });
   }
   if (fs.existsSync(outputZipPath)) {
     fs.rmSync(outputZipPath, { force: true });
+  }
+
+  const AdmZip = getAdmZip(projectDir || path.dirname(outputZipPath));
+  if (AdmZip) {
+    const zip = new AdmZip();
+    zip.addLocalFolder(sourceDir);
+    zip.writeZip(outputZipPath);
+    return;
   }
 
   if (isWin) {
@@ -163,12 +195,12 @@ if (stat.isDirectory()) {
     process.exit(1);
   }
 
-  console.log(`🔨 Building ZIP release for [${contextName}] (Context: /${contextName}/)...`);
+  console.log(`🔨 Building ZIP release for [${contextName}] (Production standard)...`);
   try {
+    // Preserve standard production environment (do not force subpath /${contextName}/)
+    // so the build works out-of-the-box on real server Nginx (like scripts/build-prod.cjs)
     const buildEnv = {
       ...process.env,
-      PUBLIC_URL: `/${contextName}/`,
-      REACT_APP_ROUTER_BASE: `/${contextName}/`,
     };
 
     if (pkg && pkg.scripts && pkg.scripts.zip) {
@@ -186,7 +218,8 @@ if (stat.isDirectory()) {
       });
       zipFilePath = findZip();
     } else if (hasBuildScript) {
-      // Standard project build -> auto package into release/*.zip
+      // Standard project build -> auto package into release/*.zip (identical to build-prod.cjs)
+      console.log("Building for Production...");
       const buildCmd = pkg.scripts.build
         ? (hasYarn ? "yarn build" : "npm run build")
         : "npm run build:prod";
@@ -206,14 +239,25 @@ if (stat.isDirectory()) {
       }
 
       if (buildOutputDir) {
+        const releaseDir = path.join(resolvedInput, "release");
+        if (!fs.existsSync(releaseDir)) {
+          fs.mkdirSync(releaseDir, { recursive: true });
+        }
         const generatedZip = path.join(
-          resolvedInput,
-          "release",
+          releaseDir,
           `${contextName}##V${version}.zip`
         );
-        console.log(`📦 Auto-creating ZIP archive: ${generatedZip}...`);
-        createZipArchive(buildOutputDir, generatedZip);
+        console.log(`📦 Creating Zip archive: ${path.basename(generatedZip)}...`);
+        createZipArchive(buildOutputDir, generatedZip, resolvedInput);
+        console.log(`Successfully created ${generatedZip}`);
         zipFilePath = generatedZip;
+
+        // Cleanup build directory after zipping (same as build-prod.cjs)
+        console.log("Cleaning up...");
+        if (fs.existsSync(buildOutputDir)) {
+          fs.rmSync(buildOutputDir, { recursive: true, force: true });
+          console.log(`Deleted ${path.basename(buildOutputDir)} directory.`);
+        }
       } else {
         zipFilePath = findZip();
       }
@@ -266,11 +310,61 @@ try {
 } catch (e) {}
 
 try {
-  extractZip(zipFilePath, targetHtmlDir);
+  extractZip(zipFilePath, targetHtmlDir, stat.isDirectory() ? resolvedInput : "");
 } catch (err) {
   console.error("❌ Failed to extract ZIP:", err.message);
   process.exit(1);
 }
+
+// Adapt local container html for gateway routing (keeps release .zip clean for real server)
+try {
+  const indexHtmlPath = path.join(targetHtmlDir, "index.html");
+  if (fs.existsSync(indexHtmlPath)) {
+    let indexHtml = fs.readFileSync(indexHtmlPath, "utf8");
+    const prefixRegex = new RegExp(`(src|href)=["']\\/(?!\\/|${contextName}\\/)`, "g");
+    indexHtml = indexHtml.replace(prefixRegex, `$1="/${contextName}/`);
+    fs.writeFileSync(indexHtmlPath, indexHtml, "utf8");
+  }
+
+  // Adjust router basename and toAbsoluteUrl base in JS chunks for local container subpath reverse proxy
+  const getAllJsFiles = (dir) => {
+    let results = [];
+    if (!fs.existsSync(dir)) return results;
+    for (const f of fs.readdirSync(dir)) {
+      const full = path.join(dir, f);
+      try {
+        if (fs.statSync(full).isDirectory()) {
+          results = results.concat(getAllJsFiles(full));
+        } else if (f.endsWith(".js")) {
+          results.push(full);
+        }
+      } catch (e) {}
+    }
+    return results;
+  };
+
+  const jsFiles = getAllJsFiles(targetHtmlDir);
+  for (const fullJsPath of jsFiles) {
+    let content = fs.readFileSync(fullJsPath, "utf8");
+    let changed = false;
+
+    // Adjust router basename (supports single/double quotes, spaced or minified)
+    if (content.includes('basename:"/"') || content.includes('basename: "/"') || content.includes("basename:'/'") || content.includes("basename: '/'")) {
+      content = content.replace(/basename:\s*["']\/["']/g, `basename:"/${contextName}/"`);
+      changed = true;
+    }
+
+    // Adjust toAbsoluteUrl base (e.g. let t="/";return t.endsWith("/"))
+    if (content.includes('let t="/";return t.endsWith("/")')) {
+      content = content.replace('let t="/";return t.endsWith("/")', `let t="/${contextName}/";return t.endsWith("/")`);
+      changed = true;
+    }
+
+    if (changed) {
+      fs.writeFileSync(fullJsPath, content, "utf8");
+    }
+  }
+} catch (e) {}
 
 // 3. Write internal project nginx.conf and meta.json
 const projectNginxConf = `server {

@@ -1,0 +1,168 @@
+================================================================================
+NGINX OPENGRAPH PREVIEW - TEAM DEPLOYMENT MANUAL
+For Real Linux Production Server (visitangkor.utebi.com)
+================================================================================
+
+Target Domain:   https://visitangkor.utebi.com
+Production API:  https://apinlebiclosha.utebi.com
+QA API:          https://qacltom.udaya-tech.com
+
+--------------------------------------------------------------------------------
+1. WHAT THIS DOES
+--------------------------------------------------------------------------------
+When users share links (Temples, Events, Activities, Museums, Audio Guides) 
+on Facebook, Telegram, WhatsApp, Twitter, or LinkedIn:
+- Regular users clicking the link are served the normal React/Vue frontend SPA.
+- Social media crawlers (bots) are intercepted by Nginx (using NJS module)
+  to fetch the latest Khmer title, description, and photo from the API and 
+  return dynamic OpenGraph (<meta property="og:*">) preview cards.
+
+--------------------------------------------------------------------------------
+2. FILES IN THIS FOLDER
+--------------------------------------------------------------------------------
+1. og_preview.js       -> The NJS JavaScript module that builds the meta tags.
+2. og-preview.conf     -> Nginx configuration snippet.
+3. robots.txt          -> Allows Facebook and other bots to scrape previews.
+4. install.sh          -> Automated 1-step installer script.
+5. test-bot.sh         -> CLI test tool simulating social media bots.
+6. README.md           -> Full technical documentation and diagrams.
+7. DEPLOY_MANUAL.txt   -> This guide.
+
+--------------------------------------------------------------------------------
+3. FAST 1-STEP INSTALLATION (RECOMMENDED)
+--------------------------------------------------------------------------------
+Step 1: Upload this entire "nginx-og-preview" folder to your server:
+    scp -r nginx-og-preview user@your-server-ip:/tmp/
+
+Step 2: SSH into your server and run the installer as root:
+    ssh user@your-server-ip
+    cd /tmp/nginx-og-preview
+    sudo bash install.sh
+
+The script will automatically:
+- Install the NJS module (libnginx-mod-http-js or nginx-module-njs).
+- Copy og_preview.js to /etc/nginx/og_preview.js (chmod 644).
+- Ensure "load_module modules/ngx_http_js_module.so;" is in /etc/nginx/nginx.conf.
+- Test nginx syntax with "nginx -t".
+
+--------------------------------------------------------------------------------
+4. MANUAL INSTALLATION (IF NOT RUNNING INSTALL.SH)
+--------------------------------------------------------------------------------
+If you prefer doing it manually:
+
+A. Install NJS package:
+   - On Ubuntu / Debian:
+       sudo apt update && sudo apt install -y libnginx-mod-http-js
+   - On CentOS / RHEL / AlmaLinux:
+       sudo dnf install -y nginx-module-njs
+
+B. Ensure module is loaded in /etc/nginx/nginx.conf (at the very top line):
+       load_module modules/ngx_http_js_module.so;
+
+C. Copy og_preview.js:
+       sudo cp og_preview.js /etc/nginx/og_preview.js
+       sudo chmod 644 /etc/nginx/og_preview.js
+
+--------------------------------------------------------------------------------
+5. CONFIGURE YOUR WEBSITE NGINX CONFIG
+--------------------------------------------------------------------------------
+Open your website's Nginx file (e.g. /etc/nginx/sites-available/visitangkor.conf 
+or /etc/nginx/conf.d/visitangkor.conf):
+
+[PART A: Put this OUTSIDE the server { } block, at the top of the file]:
+----------------------------------------------------------------------
+js_import og_preview from /etc/nginx/og_preview.js;
+
+map $http_user_agent $is_crawler {
+    default 0;
+    ~*(facebookexternalhit|telegrambot|whatsapp|twitterbot|linkedinbot|bingbot|googlebot|slackbot|discordbot|applebot) 1;
+}
+
+[PART B: Put these inside your EXISTING server { ... } block]:
+----------------------------------------------------------------------
+server {
+    listen 80;
+    listen 443 ssl http2;
+    server_name visitangkor.utebi.com;
+
+    root /var/www/your-frontend;
+    index index.html;
+
+    # 1. DNS Resolver (Mandatory for NJS to resolve external API hostnames)
+    resolver 8.8.8.8 1.1.1.1 valid=30s;
+    js_fetch_verify off;
+    js_fetch_timeout 5s;
+
+    # 2. Robots.txt (Mandatory for Facebook Sharing Debugger to avoid 403 error)
+    location = /robots.txt {
+        default_type text/plain;
+        return 200 "User-agent: *\nAllow: /\n\nUser-agent: facebookexternalhit\nAllow: /\n";
+    }
+
+    # 3. Intercept social media crawlers visiting detail pages
+    location / {
+        if ($is_crawler = 1) {
+            rewrite ^/(visit-angkor/)?(temple|activity|event|annual_event|community|museum|other|audio)/.*$ /_njs_bot_preview last;
+        }
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 4. Internal NJS Preview Handler
+    location = /_njs_bot_preview {
+        internal;
+        js_content og_preview.handleBotPreview;
+    }
+}
+
+--------------------------------------------------------------------------------
+6. TEST & RELOAD NGINX
+--------------------------------------------------------------------------------
+Run:
+    sudo nginx -t
+    sudo systemctl reload nginx
+
+--------------------------------------------------------------------------------
+7. VERIFY WITH TEST SCRIPTS & CURL
+--------------------------------------------------------------------------------
+Run the included test-bot.sh script:
+    bash test-bot.sh https://visitangkor.utebi.com/temple/detail/111 facebook
+    bash test-bot.sh https://visitangkor.utebi.com/temple/detail/111 telegram
+    bash test-bot.sh https://visitangkor.utebi.com/temple/detail/111 whatsapp
+
+Or test with curl:
+    curl -i -A "facebookexternalhit/1.1" https://visitangkor.utebi.com/temple/detail/111
+
+Expected output:
+- Returns HTTP 200
+- Contains <meta property="og:title" content="ព្រះខ័ន | Visit Angkor" />
+- Contains <meta property="og:image" content="https://apinlebiclosha.utebi.com/visitAngkorWebAPi/upload/..." />
+- Contains <meta property="og:description" ... />
+
+--------------------------------------------------------------------------------
+8. HOW QA VS PRODUCTION IS DETECTED
+--------------------------------------------------------------------------------
+The script automatically detects the environment in this order:
+1. If $og_api_base is set in Nginx -> Uses that exact URL.
+2. If $api_env is set in Nginx ("qa" or "production") -> Uses that environment.
+3. If domain is "visitangkor.utebi.com" -> Uses PRODUCTION (https://apinlebiclosha.utebi.com).
+4. If domain contains "qacltom" or "qa-visitangkor" -> Uses QA (https://qacltom.udaya-tech.com).
+5. Default fallback -> Uses PRODUCTION (https://apinlebiclosha.utebi.com).
+
+To manually force QA on any test domain, simply add this line inside server { }:
+    set $og_api_base "https://qacltom.udaya-tech.com";
+
+--------------------------------------------------------------------------------
+9. TROUBLESHOOTING CHECKLIST
+--------------------------------------------------------------------------------
+Issue 1: Facebook says "403 - robots.txt block"
+-> Fix: Ensure Section 5 Part B item #2 (location = /robots.txt) is added.
+   Then in Facebook Sharing Debugger, click "Scrape Again".
+
+Issue 2: Preview shows default fallback image/title ("Apsara | Visit Angkor")
+-> Fix: Ensure "resolver 8.8.8.8 1.1.1.1 valid=30s;" is inside server { }.
+   Check Nginx error log: sudo tail -f /var/log/nginx/error.log
+
+Issue 3: Nginx syntax error "unknown directive js_import"
+-> Fix: Ensure "load_module modules/ngx_http_js_module.so;" is at the top of 
+   /etc/nginx/nginx.conf.
+================================================================================

@@ -7,6 +7,12 @@
   "Web": {
     "${TS_CERT_DOMAIN}:443": {
       "Handlers": {
+        "/vetEvChargerFrontendAPi": {
+          "Proxy": "http://srouyapi.duckdns.org:4590/vetEvChargerFrontendAPi"
+        },
+        "/vetEvChargerTabletAPi": {
+          "Proxy": "http://srouyapi.duckdns.org:4590/vetEvChargerTabletAPi"
+        },
         "/": {
           "Proxy": "http://127.0.0.1:8080"
         }

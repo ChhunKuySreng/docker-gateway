@@ -16,12 +16,39 @@ yarn-error.log*
 # Static & Build Artifacts (Keep directories via .gitkeep)
 html/*
 !html/.gitkeep
+!html/robots.txt
 webapps/*
 !webapps/.gitkeep
 projects/*
 !projects/.gitkeep
 webapps.template/
 
-# Temporary files
+# Temporary files & Logs
 *.tmp
 *.log
+
+# Editor & IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python & YouTube Bot artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+ytbot/downloads/*
+!ytbot/downloads/.gitkeep
+
+# Database Dumps (Keep init boilerplate and .gitkeep only)
+mysql-init/*
+!mysql-init/.gitkeep
+!mysql-init/01-phpmyadmin.sql
+*.sql.gz
+*.dump
+*.sqlite
+*.sqlite3
+
