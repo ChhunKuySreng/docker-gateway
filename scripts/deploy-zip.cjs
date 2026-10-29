@@ -348,9 +348,16 @@ try {
     let content = fs.readFileSync(fullJsPath, "utf8");
     let changed = false;
 
-    // Adjust router basename (supports single/double quotes, spaced or minified)
-    if (content.includes('basename:"/"') || content.includes('basename: "/"') || content.includes("basename:'/'") || content.includes("basename: '/'")) {
-      content = content.replace(/basename:\s*["']\/["']/g, `basename:"/${contextName}/"`);
+    // Adjust router basename (supports single/double quotes, template backticks, spaced or minified)
+    // Note: React Router basename must NOT end with a trailing slash so both /app and /app/ match properly
+    if (/basename:\s*[`"']\/[`"']/.test(content)) {
+      content = content.replace(/basename:\s*[`"']\/[`"']/g, `basename:"/${contextName}"`);
+      changed = true;
+    }
+
+    // Adjust static /assets/ URLs in JS chunks so logos, illustrations, flags and icons resolve under /${contextName}/assets/
+    if (/(["'`])\/assets\//.test(content)) {
+      content = content.replace(/(["'`])\/assets\//g, `$1/${contextName}/assets/`);
       changed = true;
     }
 
@@ -382,6 +389,17 @@ const projectNginxConf = `server {
 
     root /usr/share/nginx/html;
     index index.html;
+
+    # Redirect context root without slash to slash
+    location = /${contextName} {
+        return 301 /${contextName}/;
+    }
+
+    # Disable caching for index.html so browser loads fresh build instantly
+    location = /${contextName}/index.html {
+        alias /usr/share/nginx/html/index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
 
     # Match context path with alias and SPA fallback
     location ^~ /${contextName}/ {
